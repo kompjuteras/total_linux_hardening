@@ -1,17 +1,19 @@
-- name: Report
+- name: ALL -> Report
   debug:
     msg: "Please run this playbook as a sudo user, and not as a root. Root login will be disabled by this hardening."
   when: ansible_user == "root"
   failed_when: true
 
-- name: Report
+- name: ALL -> Report
   debug:
     msg: "{{ ansible_distribution }} {{ ansible_distribution_version }} is not supported"
   when:
      - not ( ansible_distribution == 'RedHat'   and ( ansible_distribution_major_version == '7'  ))
      - not ( ansible_distribution == 'RedHat'   and ( ansible_distribution_major_version == '8'  ))
+     - not ( ansible_distribution == 'RedHat'   and ( ansible_distribution_major_version == '9'  ))
      - not ( ansible_distribution == 'CentOS'   and ( ansible_distribution_major_version == '7'  ))
      - not ( ansible_distribution == 'CentOS'   and ( ansible_distribution_major_version == '8'  ))
+     - not ( ansible_distribution == 'CentOS'   and ( ansible_distribution_major_version == '9'  ))
      - not ( ansible_distribution == 'SLES_SAP' and ( ansible_distribution_major_version == '12' ))
      - not ( ansible_distribution == 'SLES_SAP' and ( ansible_distribution_major_version == '15' ))
      - not ( ansible_distribution == 'Suse'     and ( ansible_distribution_major_version == '12' ))
@@ -20,22 +22,20 @@
   ignore_errors: false
   tags: SUPPORTED_OS
 
-
-
 # Required by zypper plugin
-- name: Check packages required by Ansible on SLES machines
+- name: ALL -> Check packages required by Ansible on SLES machines
   block:
-    - name: Check is python-xml installed on SLES servers
+    - name: ALL -> Check is python-xml installed on SLES servers
       command: rpm -q python-xml
       register: PYTHON_XML
       changed_when: false
       failed_when: false
-    - name: Install python-xml
+    - name: ALL -> Install python-xml
       command: zypper in -y python-xml
       when: '"package python-xml is not installed" in PYTHON_XML.stdout'
       ignore_errors: true
       register: PYTHON_XML_INSTALL
-    - name: Report
+    - name: ALL -> Report
       debug:
         msg: "Package python-xml required by Ansible zypper module is missing, please install it manually"
       when:
@@ -44,16 +44,16 @@
       failed_when: true
   when: ansible_os_family == "Suse"
 
-- name: Strictly forbidden filesystems
+- name: ALL -> Strictly forbidden filesystems
   block:
-    - name: Check if fat32 mounted
+    - name: ALL -> Check if fat32 mounted
       shell: mount | awk '($5 == "fat32" ) { print $0 }'
       args:
        warn: false
       register: fat32check
       changed_when: false
       failed_when: false
-    - name: Report to user if fat32 is used
+    - name: ALL -> Report to user if fat32 is used
       debug:
         msg:
           - "Fat32 is forbidden filesystem. FIX THIS MANUALLY!!!"
@@ -62,7 +62,7 @@
       failed_when: fat32check.stdout | length > 0
       ignore_errors: true
 
-- name: Setup session timeout for all users to {{ session_timeout_seconds }} seconds
+- name: ALL -> Setup session timeout for all users to {{ session_timeout_seconds }} seconds
   copy:
     dest: "/etc/profile.d/session-timeout-compliance.sh"
     mode: '0644'
@@ -74,7 +74,7 @@
   tags: SESSION_TIMEOUT
 
 # Loop take longer, but we can better see what is removed
-- name: Remove unwanted packages from the system
+- name: ALL -> Remove unwanted packages from the system
   package:
     name: "{{ item }}"
     state: absent
@@ -110,7 +110,7 @@
     - xinetd
   tags: PACKAGES_REMOVAL
 
-- name: Disable common unnecessary and dangerous services
+- name: ALL -> Disable common unnecessary and dangerous services
   service:
     name: '{{ item }}'
     state: stopped
@@ -135,7 +135,7 @@
     - readahead_early
     - readahead_later
 
-- name: Disable non-tftp services in xinetd.d
+- name: ALL -> Disable non-tftp services in xinetd.d
   replace: regexp="disable\s+=\s+[^yes]" replace="  disable = yes" dest=/etc/xinetd.d/{{ item }}
   with_items:
     - chargen-stream
@@ -151,20 +151,20 @@
   ignore_errors: true
   failed_when: false
 
-- name: Remove httpd if system is not web server
+- name: ALL -> Remove httpd if system is not web server
   package:
     name: httpd
     state: absent
   when: not system_is_webserver
 
-- name: Disable automounting
+- name: ALL -> Disable automounting
   service:
     name: autofs
     enabled: no
     state: stopped
   failed_when: false
 
-- name: Remove vsftpd and tftp if system is not ftp server
+- name: ALL -> Remove vsftpd and tftp if system is not ftp server
   package:
     name:
       - vsftpd
@@ -172,13 +172,13 @@
     state: absent
   when: not system_is_ftp
 
-- name: Remove dovecot if system is not mail server
+- name: ALL -> Remove dovecot if system is not mail server
   package:
     name: dovecot
     state: absent
   when: not system_is_mailserver
 
-- name: Install common packages
+- name: ALL -> Install common packages
   package:
     name:
       - logrotate
@@ -193,65 +193,68 @@
       - postfix
       - rsyslog
       - cronie
+      - polkit
     state: present
-  tags: COMMON_PACKAGES
+  tags:
+    - COMMON_PACKAGES
+    - SETUP_PROC_MOUNT
 
-- name: Update all packages to the latest version
+- name: ALL -> Update all packages to the latest version
   package:
     name: '*'
     state: latest
 
-- name: Start and enable sysstat service
+- name: ALL -> Start and enable sysstat service
   service:
     name: sysstat
     state: started
     enabled: yes
 
-- name: Check and setup partition --> /tmp
+- name: ALL -> Check and setup partition --> /tmp
   block:
-    - name: Setup partition flag
+    - name: ALL -> Setup partition flag
       set_fact:
         partition_name: "/tmp"
-    - name: Check if {{ partition_name }} is currently supported by this hardening
+    - name: ALL -> Check if {{ partition_name }} is currently supported by this hardening
       shell: mount | grep " {{ partition_name }} " | grep "ext3\|ext4\|xfs"
       args:
        warn: false
       register: tmp_mount_check_fs
       changed_when: false
       failed_when: false
-    - name: Check if {{ partition_name }} is separate partition
+    - name: ALL -> Check if {{ partition_name }} is separate partition
       shell: mount | grep " {{ partition_name }} "
       args:
        warn: false
       register: tmp_mount_check_separate
       changed_when: false
       failed_when: false
-    - name: Get {{ partition_name }} mount device
+    - name: ALL -> Get {{ partition_name }} mount device
       shell: awk '($2 == "{{ partition_name }}" ) { print $1 }' /etc/fstab
       register: tmp_mount_check_device
       changed_when: false
       failed_when: false
-    - name: Get {{ partition_name }} filesystem from fstab
+    - name: ALL -> Get {{ partition_name }} filesystem from fstab
       shell: awk '($2 == "{{ partition_name }}" ) { print $3 }' /etc/fstab
       register: tmp_mount_check_fs_fstab
       changed_when: false
       failed_when: false
-    - name: Get {{ partition_name }} mount options
+    - name: ALL -> Get {{ partition_name }} mount options
       shell: awk '($2 == "{{ partition_name }}" ) { print $4 }' /etc/fstab
       register: tmp_mount_check_options
       changed_when: false
       failed_when: false
-    - name: Get {{ partition_name }} dump option
+    - name: ALL -> Get {{ partition_name }} dump option
       shell: awk '($2 == "{{ partition_name }}" ) { print $5 }' /etc/fstab
       register: tmp_mount_check_dump
       changed_when: false
       failed_when: false
-    - name: Get {{ partition_name }} passno option
+    - name: ALL -> Get {{ partition_name }} passno option
       shell: awk '($2 == "{{ partition_name }}" ) { print $6 }' /etc/fstab
       register: tmp_mount_check_passno
       changed_when: false
       failed_when: false
-    - name: Report to user when {{ partition_name }} is not separate or fs is not yet supported
+    - name: ALL -> Report to user when {{ partition_name }} is not separate or fs is not yet supported
       debug:
         msg:
           - "Partition is not separate or filesystem is not yet supported"
@@ -269,26 +272,26 @@
         tmp_mount_check_fs_fstab.stdout | length == 0
       failed_when: true
       ignore_errors: true
-    - name: Setup {{ partition_name }} partition
+    - name: ALL -> Setup {{ partition_name }} partition
       block:
-        - name: Set clean partition fact
+        - name: ALL -> Set clean partition fact
           set_fact:
             tmp_mount_flags: "{{ tmp_mount_check_options.stdout }}"
-        - name: Set flag if {{ partition_name }} does not have option --> nodev
+        - name: ALL -> Set flag if {{ partition_name }} does not have option --> nodev
           set_fact:
             tmp_mount_flags: "{{ tmp_mount_flags }},nodev"
           when: '"nodev" not in tmp_mount_flags'
-        - name: Set flag if {{ partition_name }} does not have option --> nosuid
+        - name: ALL -> Set flag if {{ partition_name }} does not have option --> nosuid
           set_fact:
             tmp_mount_flags: "{{ tmp_mount_flags }},nosuid"
           when: '"nosuid" not in tmp_mount_flags'
           changed_when: false
-        - name: Set flag if {{ partition_name }} does not have option --> noexec
+        - name: ALL -> Set flag if {{ partition_name }} does not have option --> noexec
           set_fact:
             tmp_mount_flags: "{{ tmp_mount_flags }},noexec"
           when: '"noexec" not in tmp_mount_flags'
           changed_when: false
-        - name: Add to {{ partition_name }} missing mount option(s) and remount
+        - name: ALL -> Add to {{ partition_name }} missing mount option(s) and remount
           mount:
             name: '{{ partition_name }}'
             src: '{{ tmp_mount_check_device.stdout }}'
@@ -304,51 +307,51 @@
         - tmp_mount_check_fs_fstab.stdout | length > 0
   tags: SETUP_TMP_PARTITION
 
-- name: Check and setup partition --> /var
+- name: ALL -> Check and setup partition --> /var
   block:
-    - name: Setup partition flag
+    - name: ALL -> Setup partition flag
       set_fact:
         partition_name: "/var"
-    - name: Check if {{ partition_name }} is currently supported by this hardening
+    - name: ALL -> Check if {{ partition_name }} is currently supported by this hardening
       shell: mount | grep " {{ partition_name }} " | grep "ext3\|ext4\|xfs"
       args:
        warn: false
       register: var_mount_check_fs
       changed_when: false
       failed_when: false
-    - name: Check if {{ partition_name }} is separate partition
+    - name: ALL -> Check if {{ partition_name }} is separate partition
       shell: mount | grep " {{ partition_name }} "
       args:
        warn: false
       register: var_mount_check_separate
       changed_when: false
       failed_when: false
-    - name: Get {{ partition_name }} mount device
+    - name: ALL -> Get {{ partition_name }} mount device
       shell: awk '($2 == "{{ partition_name }}" ) { print $1 }' /etc/fstab
       register: var_mount_check_device
       changed_when: false
       failed_when: false
-    - name: Get {{ partition_name }} filesystem from fstab
+    - name: ALL -> Get {{ partition_name }} filesystem from fstab
       shell: awk '($2 == "{{ partition_name }}" ) { print $3 }' /etc/fstab
       register: var_mount_check_fs_fstab
       changed_when: false
       failed_when: false
-    - name: Get {{ partition_name }} mount options
+    - name: ALL -> Get {{ partition_name }} mount options
       shell: awk '($2 == "{{ partition_name }}" ) { print $4 }' /etc/fstab
       register: var_mount_check_options
       changed_when: false
       failed_when: false
-    - name: Get {{ partition_name }} dump option
+    - name: ALL -> Get {{ partition_name }} dump option
       shell: awk '($2 == "{{ partition_name }}" ) { print $5 }' /etc/fstab
       register: var_mount_check_dump
       changed_when: false
       failed_when: false
-    - name: Get {{ partition_name }} passno option
+    - name: ALL -> Get {{ partition_name }} passno option
       shell: awk '($2 == "{{ partition_name }}" ) { print $6 }' /etc/fstab
       register: var_mount_check_passno
       changed_when: false
       failed_when: false
-    - name: Report to user when {{ partition_name }} is not separate or fs is not yet supported
+    - name: ALL -> Report to user when {{ partition_name }} is not separate or fs is not yet supported
       debug:
         msg:
           - "Partition is not separate or filesystem is not yet supported"
@@ -366,26 +369,26 @@
         var_mount_check_fs_fstab.stdout | length == 0
       failed_when: true
       ignore_errors: true
-    - name: Setup {{ partition_name }} partition
+    - name: ALL -> Setup {{ partition_name }} partition
       block:
-        - name: Set clean partition fact
+        - name: ALL -> Set clean partition fact
           set_fact:
             var_mount_flags: "{{ var_mount_check_options.stdout }}"
-        - name: Set flag if {{ partition_name }} does not have option --> nodev
+        - name: ALL -> Set flag if {{ partition_name }} does not have option --> nodev
           set_fact:
             var_mount_flags: "{{ var_mount_flags }},nodev"
           when: '"nodev" not in var_mount_flags'
-        - name: Set flag if {{ partition_name }} does not have option --> nosuid
+        - name: ALL -> Set flag if {{ partition_name }} does not have option --> nosuid
           set_fact:
             var_mount_flags: "{{ var_mount_flags }},nosuid"
           when: '"nosuid" not in var_mount_flags'
           changed_when: false
-        - name: Set flag if {{ partition_name }} does not have option --> noexec
+        - name: ALL -> Set flag if {{ partition_name }} does not have option --> noexec
           set_fact:
             var_mount_flags: "{{ var_mount_flags }},noexec"
           when: '"noexec" not in var_mount_flags'
           changed_when: false
-        - name: Add to {{ partition_name }} missing mount option(s) and remount
+        - name: ALL -> Add to {{ partition_name }} missing mount option(s) and remount
           mount:
             name: '{{ partition_name }}'
             src: '{{ var_mount_check_device.stdout }}'
@@ -401,51 +404,51 @@
         - var_mount_check_fs_fstab.stdout | length > 0
   tags: SETUP_VAR_PARTITION
 
-- name: Check and setup partition --> /var/tmp
+- name: ALL -> Check and setup partition --> /var/tmp
   block:
-    - name: Setup partition flag
+    - name: ALL -> Setup partition flag
       set_fact:
         partition_name: "/var/tmp"
-    - name: Check if {{ partition_name }} is currently supported by this hardening
+    - name: ALL -> Check if {{ partition_name }} is currently supported by this hardening
       shell: mount | grep " {{ partition_name }} " | grep "ext3\|ext4\|xfs"
       args:
        warn: false
       register: vartmp_mount_check_fs
       changed_when: false
       failed_when: false
-    - name: Check if {{ partition_name }} is separate partition
+    - name: ALL -> Check if {{ partition_name }} is separate partition
       shell: mount | grep " {{ partition_name }} "
       args:
        warn: false
       register: vartmp_mount_check_separate
       changed_when: false
       failed_when: false
-    - name: Get {{ partition_name }} mount device
+    - name: ALL -> Get {{ partition_name }} mount device
       shell: awk '($2 == "{{ partition_name }}" ) { print $1 }' /etc/fstab
       register: vartmp_mount_check_device
       changed_when: false
       failed_when: false
-    - name: Get {{ partition_name }} filesystem from fstab
+    - name: ALL -> Get {{ partition_name }} filesystem from fstab
       shell: awk '($2 == "{{ partition_name }}" ) { print $3 }' /etc/fstab
       register: vartmp_mount_check_fs_fstab
       changed_when: false
       failed_when: false
-    - name: Get {{ partition_name }} mount options
+    - name: ALL -> Get {{ partition_name }} mount options
       shell: awk '($2 == "{{ partition_name }}" ) { print $4 }' /etc/fstab
       register: vartmp_mount_check_options
       changed_when: false
       failed_when: false
-    - name: Get {{ partition_name }} dump option
+    - name: ALL -> Get {{ partition_name }} dump option
       shell: awk '($2 == "{{ partition_name }}" ) { print $5 }' /etc/fstab
       register: vartmp_mount_check_dump
       changed_when: false
       failed_when: false
-    - name: Get {{ partition_name }} passno option
+    - name: ALL -> Get {{ partition_name }} passno option
       shell: awk '($2 == "{{ partition_name }}" ) { print $6 }' /etc/fstab
       register: vartmp_mount_check_passno
       changed_when: false
       failed_when: false
-    - name: Report to user when {{ partition_name }} is not separate or fs is not yet supported
+    - name: ALL -> Report to user when {{ partition_name }} is not separate or fs is not yet supported
       debug:
         msg:
           - "Partition is not separate or filesystem is not yet supported"
@@ -463,26 +466,26 @@
         vartmp_mount_check_fs_fstab.stdout | length == 0
       failed_when: true
       ignore_errors: true
-    - name: Setup {{ partition_name }} partition
+    - name: ALL -> Setup {{ partition_name }} partition
       block:
-        - name: Set clean partition fact
+        - name: ALL -> Set clean partition fact
           set_fact:
             vartmp_mount_flags: "{{ vartmp_mount_check_options.stdout }}"
-        - name: Set flag if {{ partition_name }} does not have option --> nodev
+        - name: ALL -> Set flag if {{ partition_name }} does not have option --> nodev
           set_fact:
             vartmp_mount_flags: "{{ vartmp_mount_flags }},nodev"
           when: '"nodev" not in vartmp_mount_flags'
-        - name: Set flag if {{ partition_name }} does not have option --> nosuid
+        - name: ALL -> Set flag if {{ partition_name }} does not have option --> nosuid
           set_fact:
             vartmp_mount_flags: "{{ vartmp_mount_flags }},nosuid"
           when: '"nosuid" not in vartmp_mount_flags'
           changed_when: false
-        - name: Set flag if {{ partition_name }} does not have option --> noexec
+        - name: ALL -> Set flag if {{ partition_name }} does not have option --> noexec
           set_fact:
             vartmp_mount_flags: "{{ vartmp_mount_flags }},noexec"
           when: '"noexec" not in vartmp_mount_flags'
           changed_when: false
-        - name: Add to {{ partition_name }} missing mount option(s) and remount
+        - name: ALL -> Add to {{ partition_name }} missing mount option(s) and remount
           mount:
             name: '{{ partition_name }}'
             src: '{{ vartmp_mount_check_device.stdout }}'
@@ -498,51 +501,51 @@
         - vartmp_mount_check_fs_fstab.stdout | length > 0
   tags: SETUP_VAR_PARTITION
 
-- name: Check and setup partition --> /var/log
+- name: ALL -> Check and setup partition --> /var/log
   block:
-    - name: Setup partition flag
+    - name: ALL -> Setup partition flag
       set_fact:
         partition_name: "/var/log"
-    - name: Check if {{ partition_name }} is currently supported by this hardening
+    - name: ALL -> Check if {{ partition_name }} is currently supported by this hardening
       shell: mount | grep " {{ partition_name }} " | grep "ext3\|ext4\|xfs"
       args:
        warn: false
       register: varlog_mount_check_fs
       changed_when: false
       failed_when: false
-    - name: Check if {{ partition_name }} is separate partition
+    - name: ALL -> Check if {{ partition_name }} is separate partition
       shell: mount | grep " {{ partition_name }} "
       args:
        warn: false
       register: varlog_mount_check_separate
       changed_when: false
       failed_when: false
-    - name: Get {{ partition_name }} mount device
+    - name: ALL -> Get {{ partition_name }} mount device
       shell: awk '($2 == "{{ partition_name }}" ) { print $1 }' /etc/fstab
       register: varlog_mount_check_device
       changed_when: false
       failed_when: false
-    - name: Get {{ partition_name }} filesystem from fstab
+    - name: ALL -> Get {{ partition_name }} filesystem from fstab
       shell: awk '($2 == "{{ partition_name }}" ) { print $3 }' /etc/fstab
       register: varlog_mount_check_fs_fstab
       changed_when: false
       failed_when: false
-    - name: Get {{ partition_name }} mount options
+    - name: ALL -> Get {{ partition_name }} mount options
       shell: awk '($2 == "{{ partition_name }}" ) { print $4 }' /etc/fstab
       register: varlog_mount_check_options
       changed_when: false
       failed_when: false
-    - name: Get {{ partition_name }} dump option
+    - name: ALL -> Get {{ partition_name }} dump option
       shell: awk '($2 == "{{ partition_name }}" ) { print $5 }' /etc/fstab
       register: varlog_mount_check_dump
       changed_when: false
       failed_when: false
-    - name: Get {{ partition_name }} passno option
+    - name: ALL -> Get {{ partition_name }} passno option
       shell: awk '($2 == "{{ partition_name }}" ) { print $6 }' /etc/fstab
       register: varlog_mount_check_passno
       changed_when: false
       failed_when: false
-    - name: Report to user when {{ partition_name }} is not separate or fs is not yet supported
+    - name: ALL -> Report to user when {{ partition_name }} is not separate or fs is not yet supported
       debug:
         msg:
           - "Partition is not separate or filesystem is not yet supported"
@@ -560,26 +563,26 @@
         varlog_mount_check_fs_fstab.stdout | length == 0
       failed_when: true
       ignore_errors: true
-    - name: Setup {{ partition_name }} partition
+    - name: ALL -> Setup {{ partition_name }} partition
       block:
-        - name: Set clean partition fact
+        - name: ALL -> Set clean partition fact
           set_fact:
             varlog_mount_flags: "{{ varlog_mount_check_options.stdout }}"
-        - name: Set flag if {{ partition_name }} does not have option --> nodev
+        - name: ALL -> Set flag if {{ partition_name }} does not have option --> nodev
           set_fact:
             varlog_mount_flags: "{{ varlog_mount_flags }},nodev"
           when: '"nodev" not in varlog_mount_flags'
-        - name: Set flag if {{ partition_name }} does not have option --> nosuid
+        - name: ALL -> Set flag if {{ partition_name }} does not have option --> nosuid
           set_fact:
             varlog_mount_flags: "{{ varlog_mount_flags }},nosuid"
           when: '"nosuid" not in varlog_mount_flags'
           changed_when: false
-        - name: Set flag if {{ partition_name }} does not have option --> noexec
+        - name: ALL -> Set flag if {{ partition_name }} does not have option --> noexec
           set_fact:
             varlog_mount_flags: "{{ varlog_mount_flags }},noexec"
           when: '"noexec" not in varlog_mount_flags'
           changed_when: false
-        - name: Add to {{ partition_name }} missing mount option(s) and remount
+        - name: ALL -> Add to {{ partition_name }} missing mount option(s) and remount
           mount:
             name: '{{ partition_name }}'
             src: '{{ varlog_mount_check_device.stdout }}'
@@ -595,51 +598,51 @@
         - varlog_mount_check_fs_fstab.stdout | length > 0
   tags: SETUP_VAR_LOG_PARTITION
 
-- name: Check and setup partition --> /var/log/audit
+- name: ALL -> Check and setup partition --> /var/log/audit
   block:
-    - name: Setup partition flag
+    - name: ALL -> Setup partition flag
       set_fact:
         partition_name: "/var/log/audit"
-    - name: Check if {{ partition_name }} is currently supported by this hardening
+    - name: ALL -> Check if {{ partition_name }} is currently supported by this hardening
       shell: mount | grep " {{ partition_name }} " | grep "ext3\|ext4\|xfs"
       args:
        warn: false
       register: varlogaudit_mount_check_fs
       changed_when: false
       failed_when: false
-    - name: Check if {{ partition_name }} is separate partition
+    - name: ALL -> Check if {{ partition_name }} is separate partition
       shell: mount | grep " {{ partition_name }} "
       args:
        warn: false
       register: varlogaudit_mount_check_separate
       changed_when: false
       failed_when: false
-    - name: Get {{ partition_name }} mount device
+    - name: ALL -> Get {{ partition_name }} mount device
       shell: awk '($2 == "{{ partition_name }}" ) { print $1 }' /etc/fstab
       register: varlogaudit_mount_check_device
       changed_when: false
       failed_when: false
-    - name: Get {{ partition_name }} filesystem from fstab
+    - name: ALL -> Get {{ partition_name }} filesystem from fstab
       shell: awk '($2 == "{{ partition_name }}" ) { print $3 }' /etc/fstab
       register: varlogaudit_mount_check_fs_fstab
       changed_when: false
       failed_when: false
-    - name: Get {{ partition_name }} mount options
+    - name: ALL -> Get {{ partition_name }} mount options
       shell: awk '($2 == "{{ partition_name }}" ) { print $4 }' /etc/fstab
       register: varlogaudit_mount_check_options
       changed_when: false
       failed_when: false
-    - name: Get {{ partition_name }} dump option
+    - name: ALL -> Get {{ partition_name }} dump option
       shell: awk '($2 == "{{ partition_name }}" ) { print $5 }' /etc/fstab
       register: varlogaudit_mount_check_dump
       changed_when: false
       failed_when: false
-    - name: Get {{ partition_name }} passno option
+    - name: ALL -> Get {{ partition_name }} passno option
       shell: awk '($2 == "{{ partition_name }}" ) { print $6 }' /etc/fstab
       register: varlogaudit_mount_check_passno
       changed_when: false
       failed_when: false
-    - name: Report to user when {{ partition_name }} is not separate or fs is not yet supported
+    - name: ALL -> Report to user when {{ partition_name }} is not separate or fs is not yet supported
       debug:
         msg:
           - "Partition is not separate or filesystem is not yet supported"
@@ -657,26 +660,26 @@
         varlogaudit_mount_check_fs_fstab.stdout | length == 0
       failed_when: true
       ignore_errors: true
-    - name: Setup {{ partition_name }} partition
+    - name: ALL -> Setup {{ partition_name }} partition
       block:
-        - name: Set clean partition fact
+        - name: ALL -> Set clean partition fact
           set_fact:
             varlogaudit_mount_flags: "{{ varlogaudit_mount_check_options.stdout }}"
-        - name: Set flag if {{ partition_name }} does not have option --> nodev
+        - name: ALL -> Set flag if {{ partition_name }} does not have option --> nodev
           set_fact:
             varlogaudit_mount_flags: "{{ varlogaudit_mount_flags }},nodev"
           when: '"nodev" not in varlogaudit_mount_flags'
-        - name: Set flag if {{ partition_name }} does not have option --> nosuid
+        - name: ALL -> Set flag if {{ partition_name }} does not have option --> nosuid
           set_fact:
             varlogaudit_mount_flags: "{{ varlogaudit_mount_flags }},nosuid"
           when: '"nosuid" not in varlogaudit_mount_flags'
           changed_when: false
-        - name: Set flag if {{ partition_name }} does not have option --> noexec
+        - name: ALL -> Set flag if {{ partition_name }} does not have option --> noexec
           set_fact:
             varlogaudit_mount_flags: "{{ varlogaudit_mount_flags }},noexec"
           when: '"noexec" not in varlogaudit_mount_flags'
           changed_when: false
-        - name: Add to {{ partition_name }} missing mount option(s) and remount
+        - name: ALL -> Add to {{ partition_name }} missing mount option(s) and remount
           mount:
             name: '{{ partition_name }}'
             src: '{{ varlogaudit_mount_check_device.stdout }}'
@@ -692,51 +695,51 @@
         - varlogaudit_mount_check_fs_fstab.stdout | length > 0
   tags: SETUP_VAR_LOG_PARTITION
 
-- name: Check and setup partition --> /home
+- name: ALL -> Check and setup partition --> /home
   block:
-    - name: Setup partition flag
+    - name: ALL -> Setup partition flag
       set_fact:
         partition_name: "/home"
-    - name: Check if {{ partition_name }} is currently supported by this hardening
+    - name: ALL -> Check if {{ partition_name }} is currently supported by this hardening
       shell: mount | grep " {{ partition_name }} " | grep "ext3\|ext4\|xfs"
       args:
        warn: false
       register: home_mount_check_fs
       changed_when: false
       failed_when: false
-    - name: Check if {{ partition_name }} is separate partition
+    - name: ALL -> Check if {{ partition_name }} is separate partition
       shell: mount | grep " {{ partition_name }} "
       args:
        warn: false
       register: home_mount_check_separate
       changed_when: false
       failed_when: false
-    - name: Get {{ partition_name }} mount device
+    - name: ALL -> Get {{ partition_name }} mount device
       shell: awk '($2 == "{{ partition_name }}" ) { print $1 }' /etc/fstab
       register: home_mount_check_device
       changed_when: false
       failed_when: false
-    - name: Get {{ partition_name }} filesystem from fstab
+    - name: ALL -> Get {{ partition_name }} filesystem from fstab
       shell: awk '($2 == "{{ partition_name }}" ) { print $3 }' /etc/fstab
       register: home_mount_check_fs_fstab
       changed_when: false
       failed_when: false
-    - name: Get {{ partition_name }} mount options
+    - name: ALL -> Get {{ partition_name }} mount options
       shell: awk '($2 == "{{ partition_name }}" ) { print $4 }' /etc/fstab
       register: home_mount_check_options
       changed_when: false
       failed_when: false
-    - name: Get {{ partition_name }} dump option
+    - name: ALL -> Get {{ partition_name }} dump option
       shell: awk '($2 == "{{ partition_name }}" ) { print $5 }' /etc/fstab
       register: home_mount_check_dump
       changed_when: false
       failed_when: false
-    - name: Get {{ partition_name }} passno option
+    - name: ALL -> Get {{ partition_name }} passno option
       shell: awk '($2 == "{{ partition_name }}" ) { print $6 }' /etc/fstab
       register: home_mount_check_passno
       changed_when: false
       failed_when: false
-    - name: Report to user when {{ partition_name }} is not separate or fs is not yet supported
+    - name: ALL -> Report to user when {{ partition_name }} is not separate or fs is not yet supported
       debug:
         msg:
           - "Partition is not separate or filesystem is not yet supported"
@@ -754,21 +757,21 @@
         home_mount_check_fs_fstab.stdout | length == 0
       failed_when: true
       ignore_errors: true
-    - name: Setup {{ partition_name }} partition
+    - name: ALL -> Setup {{ partition_name }} partition
       block:
-        - name: Set clean partition fact
+        - name: ALL -> Set clean partition fact
           set_fact:
             home_mount_flags: "{{ home_mount_check_options.stdout }}"
-        - name: Set flag if {{ partition_name }} does not have option --> nodev
+        - name: ALL -> Set flag if {{ partition_name }} does not have option --> nodev
           set_fact:
             home_mount_flags: "{{ home_mount_flags }},nodev"
           when: '"nodev" not in home_mount_flags'
-        - name: Set flag if {{ partition_name }} does not have option --> nosuid
+        - name: ALL -> Set flag if {{ partition_name }} does not have option --> nosuid
           set_fact:
             home_mount_flags: "{{ home_mount_flags }},nosuid"
           when: '"nosuid" not in home_mount_flags'
           changed_when: false
-        - name: Add to {{ partition_name }} missing mount option(s) and remount
+        - name: ALL -> Add to {{ partition_name }} missing mount option(s) and remount
           mount:
             name: '{{ partition_name }}'
             src: '{{ home_mount_check_device.stdout }}'
@@ -784,51 +787,51 @@
         - home_mount_check_fs_fstab.stdout | length > 0
   tags: SETUP_HOME_PARTITION
 
-- name: Check and setup partition --> /boot
+- name: ALL -> Check and setup partition --> /boot
   block:
-    - name: Setup partition flag
+    - name: ALL -> Setup partition flag
       set_fact:
         partition_name: "/boot"
-    - name: Check if {{ partition_name }} is currently supported by this hardening
+    - name: ALL -> Check if {{ partition_name }} is currently supported by this hardening
       shell: mount | grep " {{ partition_name }} " | grep "ext3\|ext4\|xfs"
       args:
        warn: false
       register: boot_mount_check_fs
       changed_when: false
       failed_when: false
-    - name: Check if {{ partition_name }} is separate partition
+    - name: ALL -> Check if {{ partition_name }} is separate partition
       shell: mount | grep " {{ partition_name }} "
       args:
        warn: false
       register: boot_mount_check_separate
       changed_when: false
       failed_when: false
-    - name: Get {{ partition_name }} mount device
+    - name: ALL -> Get {{ partition_name }} mount device
       shell: awk '($2 == "{{ partition_name }}" ) { print $1 }' /etc/fstab
       register: boot_mount_check_device
       changed_when: false
       failed_when: false
-    - name: Get {{ partition_name }} filesystem from fstab
+    - name: ALL -> Get {{ partition_name }} filesystem from fstab
       shell: awk '($2 == "{{ partition_name }}" ) { print $3 }' /etc/fstab
       register: boot_mount_check_fs_fstab
       changed_when: false
       failed_when: false
-    - name: Get {{ partition_name }} mount options
+    - name: ALL -> Get {{ partition_name }} mount options
       shell: awk '($2 == "{{ partition_name }}" ) { print $4 }' /etc/fstab
       register: boot_mount_check_options
       changed_when: false
       failed_when: false
-    - name: Get {{ partition_name }} dump option
+    - name: ALL -> Get {{ partition_name }} dump option
       shell: awk '($2 == "{{ partition_name }}" ) { print $5 }' /etc/fstab
       register: boot_mount_check_dump
       changed_when: false
       failed_when: false
-    - name: Get {{ partition_name }} passno option
+    - name: ALL -> Get {{ partition_name }} passno option
       shell: awk '($2 == "{{ partition_name }}" ) { print $6 }' /etc/fstab
       register: boot_mount_check_passno
       changed_when: false
       failed_when: false
-    - name: Report to user when {{ partition_name }} is not separate or fs is not yet supported
+    - name: ALL -> Report to user when {{ partition_name }} is not separate or fs is not yet supported
       debug:
         msg:
           - "Partition is not separate or filesystem is not yet supported"
@@ -846,21 +849,21 @@
         boot_mount_check_fs_fstab.stdout | length == 0
       failed_when: true
       ignore_errors: true
-    - name: Setup {{ partition_name }} partition
+    - name: ALL -> Setup {{ partition_name }} partition
       block:
-        - name: Set clean partition fact
+        - name: ALL -> Set clean partition fact
           set_fact:
             boot_mount_flags: "{{ boot_mount_check_options.stdout }}"
-        - name: Set flag if {{ partition_name }} does not have option --> nodev
+        - name: ALL -> Set flag if {{ partition_name }} does not have option --> nodev
           set_fact:
             boot_mount_flags: "{{ boot_mount_flags }},nodev"
           when: '"nodev" not in boot_mount_flags'
-        - name: Set flag if {{ partition_name }} does not have option --> nosuid
+        - name: ALL -> Set flag if {{ partition_name }} does not have option --> nosuid
           set_fact:
             boot_mount_flags: "{{ boot_mount_flags }},nosuid"
           when: '"nosuid" not in boot_mount_flags'
           changed_when: false
-        - name: Add to {{ partition_name }} missing mount option(s) and remount
+        - name: ALL -> Add to {{ partition_name }} missing mount option(s) and remount
           mount:
             name: '{{ partition_name }}'
             src: '{{ boot_mount_check_device.stdout }}'
@@ -877,9 +880,9 @@
   tags: SETUP_BOOT_PARTITION
 
 # Users will not be able to see processes of the other users. Root can see the all.
-- name: Set hidepid=2 in /etc/fstab so users cannot see pids of other users
+- name: ALL -> Set hidepid=2 in /etc/fstab so users cannot see pids of other users
   block:
-    - name: Set hidepid=2 in /etc/fstab so users cannot see pids of other users
+    - name: ALL -> Set hidepid=2 in /etc/fstab so users cannot see pids of other users
       mount:
         path: /proc
         src: proc
@@ -889,30 +892,30 @@
         dump: "0"
         state: present
       register: hidepid
-    - name: Ensure group "nohidproc" exists - needed for hidepid
+    - name: ALL -> Ensure group "nohidproc" exists - needed for hidepid
       group:
         name: nohidproc
         state: present
         gid: 23
-    - name: Add the group nohidproc as a secondary to polkitd
+    - name: ALL -> Add the group nohidproc as a secondary to polkitd
       user:
         name: polkitd
         groups: nohidproc
         append: yes
-    - name: Remount /proc if changed in fstab
+    - name: ALL -> Remount /proc if changed in fstab
       mount:
         path: /proc
         opts: defaults,hidepid=2,gid=nohidproc
         state: remounted
       when: hidepid.changed
-    - name: Restart polkit service
+    - name: ALL -> Restart polkit service
       service:
         name: 'polkit'
         state: restarted
       when: hidepid.changed
   tags: SETUP_PROC_MOUNT
 
-- name: Setup flags on /dev/shm partition
+- name: ALL -> Setup flags on /dev/shm partition
   mount:
     path: /dev/shm
     src: tmpfs
@@ -922,21 +925,21 @@
     passno: "0"
     state: present
 
-- name: Reformat content of /etc/fstab
+- name: ALL -> Reformat content of /etc/fstab
   block:
-    - name: Create normal output for fstab to /tmp/fstab.temp
+    - name: ALL -> Create normal output for fstab to /tmp/fstab.temp
       shell: grep -v '^#' /etc/fstab | column -t > /tmp/fstab.temp
       changed_when: false
-    - name: Diff original and formatted fstab
+    - name: ALL -> Diff original and formatted fstab
       command: diff /tmp/fstab.temp /etc/fstab
       changed_when: false
       failed_when: false
       register: fstab_diff
-    - name: Backup original /etc/fstab
+    - name: ALL -> Backup original /etc/fstab
       shell: cat /etc/fstab > /tmp/fstab-original
       changed_when: false
       when: fstab_diff.stdout | length > 0
-    - name: Apply /tmp/fstab.temp to /etc/fstab
+    - name: ALL -> Apply /tmp/fstab.temp to /etc/fstab
       copy:
         src: /tmp/fstab.temp
         dest: /etc/fstab
@@ -944,7 +947,7 @@
         mode: "0644"
       register: fstab_reformat
       when: fstab_diff.stdout | length > 0
-    - name: Delete /tmp/fstab.temp
+    - name: ALL -> Delete /tmp/fstab.temp
       file:
         path: /tmp/fstab.temp
         state: absent
@@ -952,42 +955,42 @@
       when: fstab_diff.stdout | length > 0
   tags: REFORMAT_FSTAB
 
-- name: Search /var/log/messages to see if protection is active
+- name: ALL -> Search /var/log/messages to see if protection is active
   block:
-    - name: Search /var/log/messages to see if protection is active - RHEL7+, SLES
+    - name: ALL -> Search /var/log/messages to see if protection is active
       shell: |
         grep ^flags /proc/cpuinfo | head -n1 | grep -c 'nx'
       register: nx_protection
       changed_when: false
-    - name: Report
+    - name: ALL -> Report
       debug: msg='Enable XD/NX support from BIOS manually {{ nx_protection.stdout|int }}'
       when: nx_protection.stdout|int == 0
       changed_when: true
 
-- name: Setup chrony on all systems
+- name: ALL -> Setup chrony on all systems
   block:
-  - name: Configure chrony
+  - name: ALL -> Configure chrony
     template:
       src: "files/chrony.conf"
       dest: /etc/chrony.conf
       owner: root
       group: root
       mode: 0644
-  - name: Verify chrony is started and enabled
+  - name: ALL -> Verify chrony is started and enabled
     service:
       name: chronyd
       state: started
       enabled: yes
 
 # Require postfix installed (done tags=COMMON_PACKAGES)
-- name: Configure email for local-only mode if mail software is installed and not intending to be an external email relay #mail_server=false)
+- name: ALL -> Configure email for local-only mode if mail software is installed and not intending to be an external email relay #mail_server=false)
   block:
-    - name: Find if we have a mail agent config file
+    - name: ALL -> Find do we have a mail agent config file
       stat:
         path: /etc/postfix/main.cf
       register: postfix_out
       changed_when: false
-    - name: If the file exists and not a mail server, then set loopback only
+    - name: ALL -> If the file exists and not a mail server, then set loopback only
       lineinfile:
         path: /etc/postfix/main.cf
         regexp:  "{{ item.regexp }}"
@@ -999,25 +1002,25 @@
         - { regexp: "^.*inet_protocols = ", line: "inet_protocols = ipv4" }
       when: postfix_out.stat.exists
       register: maincf
-    - name: Restart service postfix if main.cf is changed
+    - name: ALL -> Restart service postfix if main.cf is changed
       service:
         name: postfix
         state: restarted
       when: maincf.changed
-    - name: Test postfix config
+    - name: ALL -> Test postfix config
       command: postconf > /dev/null
       when: maincf.changed
       changed_when: false
   when: not system_is_mailserver
 
-- name: Ensure permissions on /etc/crontab
+- name: ALL -> Ensure permissions on /etc/crontab
   file:
     path: /etc/crontab
     owner: root
     group: root
     mode: 0600
 
-- name: Ensure permissions on crontab directories
+- name: ALL -> Ensure permissions on crontab directories
   file:
     path: "{{ item }}"
     owner: root
@@ -1030,7 +1033,7 @@
       - /etc/cron.monthly
       - /etc/cron.d
 
-- name: Create the cron/at allow files
+- name: ALL -> Create the cron/at allow files
   copy:
     dest: "{{ item }}"
     content: ""
@@ -1043,62 +1046,62 @@
     - /etc/at.allow
 
 # Please correct this manually if check find something.
-- name: Ensure no world writable files exist
+- name: ALL -> Ensure no world writable files exist
   block:
-    - name: Find any world writable files
+    - name: ALL -> Find any world writable files
       shell: "/usr/bin/df --local -P | /usr/bin/awk {' if (NR!=1) print $6'} | /usr/bin/xargs -I '{}' find '{}' -xdev -type f -perm -0002"
       register: ww_files
       changed_when: false
-    - name: Print any world writable files found (fix manually if any)
+    - name: ALL -> Print any world writable files found (fix manually if any)
       debug:
         msg: "World writable files found: {{ ww_files.stdout }}"
       changed_when: true
       when: ww_files.stdout
 
-- name: Ensure no unowned files exist
+- name: ALL -> Ensure no unowned files exist
   block:
-    - name: Find any unowned files
+    - name: ALL -> Find any unowned files
       shell: "/usr/bin/df --local -P | /usr/bin/awk {' if (NR!=1) print $6'} | /usr/bin/xargs -I '{}' find '{}' -xdev -nouser"
       register: uo_files
       changed_when: false
-    - name: Print any unowned files found
+    - name: ALL -> Print any unowned files found
       debug:
         msg: "Unowned files found: {{ uo_files.stdout_lines }}"
       changed_when: true
       when: uo_files.stdout
 
-- name: Ensure no ungrouped files exist
+- name: ALL -> Ensure no ungrouped files exist
   block:
-    - name: Find any ungrouped files
+    - name: ALL -> Find any ungrouped files
       shell: "/usr/bin/df --local -P | /usr/bin/awk {' if (NR!=1) print $6'} | /usr/bin/xargs -I '{}' find '{}' -xdev -nogroup"
       register: ug_files
       changed_when: false
-    - name: Print any ungrouped files found (fix manually if any)
+    - name: ALL -> Print any ungrouped files found (fix manually if any)
       debug:
         msg: "ungrouped files found: {{ uo_files.stdout_lines }}"
       changed_when: true
       when: ug_files.stdout
 
-- name: Ensure password fields are not empty
+- name: ALL -> Ensure password fields are not empty
   block:
-    - name: Check to see if there are any accounts with empty passwords
+    - name: ALL -> Check to see if there are any accounts with empty passwords
       shell: "/usr/bin/cat /etc/shadow | awk -F: '($2 == \"\" ) { print $1 }'"
       changed_when: false
       register: empty_passwords
-    - name: Report the named users to the report (fix manually if any)
+    - name: ALL -> Report the named users to the report (fix manually if any)
       debug:
         msg: "The user {{ item }} has an empty password"
       when: empty_passwords.stdout
       changed_when: true
       loop: "{{ empty_passwords.stdout_lines }}"
 
-- name: Ensure root PATH integrity
+- name: ALL -> Ensure root PATH integrity
   block:
-    - name: Run script on path variable
+    - name: ALL -> Run script on path variable
       script: files/path_check.sh
       changed_when: false
       register: path_check
-    - name: Print report to user (fix manually if any)
+    - name: ALL -> Print report to user (fix manually if any)
       debug:
         msg:
           - "Note, Ansible runs this as SUDO with the ansible user's PATH variable. The script may not print issues"
@@ -1106,116 +1109,116 @@
           - " {{ path_check.stdout }}"
       when: path_check.stdout
 
-- name: Report on groups in /etc/passwd with a GID not in /etc/group
+- name: ALL -> Report on groups in /etc/passwd with a GID not in /etc/group
   block:
-    - name: Use script to pull the list of groups
+    - name: ALL -> Use script to pull the list of groups
       script:
         cmd: files/undefined_groups.sh
       register: undefined_groups
       changed_when: false
-    - name: Report to user any unreferenced groups (fix manually if any)
+    - name: ALL -> Report to user any unreferenced groups (fix manually if any)
       debug:
         msg: "{{ undefined_groups.stdout_lines }}"
       changed_when: true
       when: undefined_groups.stdout | trim | length > 0
 
-- name: Report on duplicate UIDs in /etc/passwd
+- name: ALL -> Report on duplicate UIDs in /etc/passwd
   block:
-    - name: Use script to pull the list of duplicate UIDs
+    - name: ALL -> Use script to pull the list of duplicate UIDs
       script:
         cmd: files/duplicate_uids.sh
       register: duplicate_uids
       changed_when: false
-    - name: Print report of duplicated UIDs to user (fix manually if any)
+    - name: ALL -> Print report of duplicated UIDs to user (fix manually if any)
       debug:
         msg: "{{ duplicate_uids.stdout_lines }}"
       changed_when: true
       when: duplicate_uids.stdout | trim | length > 0
 
-- name: Report on duplicate GIDs in /etc/group
+- name: ALL -> Report on duplicate GIDs in /etc/group
   block:
-    - name: Use script to pull the list of duplicate GIDs
+    - name: ALL -> Use script to pull the list of duplicate GIDs
       script:
         cmd: files/duplicate_guids.sh
       register: duplicate_guids
       changed_when: false
-    - name: Print report of duplicate GIDs to user (fix manually if any)
+    - name: ALL -> Print report of duplicate GIDs to user (fix manually if any)
       debug:
         msg: "{{ duplicate_guids.stdout_lines }}"
       changed_when: true
       when: duplicate_guids.stdout | trim | length > 0
 
-- name: Report on duplicate users in /etc/passwd
+- name: ALL -> Report on duplicate users in /etc/passwd
   block:
-    - name: Use script to pull the list of users
+    - name: ALL -> Use script to pull the list of users
       script:
         cmd: files/duplicate_users.sh
       register: duplicate_users
       changed_when: false
-    - name: Print report of duplicate users to user (fix manually if any)
+    - name: ALL -> Print report of duplicate users to user (fix manually if any)
       debug:
         msg: "{{ duplicate_users.stdout_lines }}"
       changed_when: true
       when: duplicate_users.stdout | trim | length > 0
 
-- name: Report on duplicate groups in /etc/group
+- name: ALL -> Report on duplicate groups in /etc/group
   block:
-    - name: Use script to pull the list of groups
+    - name: ALL -> Use script to pull the list of groups
       script:
         cmd: files/duplicate_groups.sh
       register: duplicate_groups
       changed_when: false
-    - name: Print report of duplicate groups to user (fix manually if any)
+    - name: ALL -> Print report of duplicate groups to user (fix manually if any)
       debug:
         msg: "{{ duplicate_groups.stdout_lines }}"
       changed_when: true
       when: duplicate_groups.stdout | trim | length > 0
 
 # Require rsyslog installed (done tags=COMMON_PACKAGES)
-- name: Setup RSYSLOG
+- name: ALL -> Setup RSYSLOG
   block:
-    - name: Ensure remote rsyslog messages are only accepted on designated log hosts
+    - name: ALL -> Ensure remote rsyslog messages are only accepted on designated log hosts
       block:
-        - name: Enable Rsyslog
+        - name: ALL -> Enable Rsyslog
           service:
             name: rsyslog
             enabled: yes
-        - name: Find all rsyslog conf files in /etc/rsyslog.d
+        - name: ALL -> Find all rsyslog conf files in /etc/rsyslog.d
           find:
             paths: "/etc/rsyslog.d"
             patterns: "*.conf"
             excludes: "CIS.conf"
           register: rsyslog_module_found
-        - name: Disable imtcp loading module on non log hosts (rsyslog.d conf files)
+        - name: ALL -> Disable imtcp loading module on non log hosts (rsyslog.d conf files)
           lineinfile:
             dest: "{{ item.path }}"
             regexp: '^\$ModLoad\s+imtcp'
             state: absent
           loop: "{{ rsyslog_module_found.files }}"
-        - name: Disable imtcp loading module on non log hosts (main rsyslog conf file)
+        - name: ALL -> Disable imtcp loading module on non log hosts (main rsyslog conf file)
           lineinfile:
             dest: "/etc/rsyslog.conf"
             regexp: '^\$ModLoad\s+imtcp'
             state: absent
-        - name: Ensure rsyslog default file permissions are configured
+        - name: ALL -> Ensure rsyslog default file permissions are configured
           lineinfile:
             path: /etc/rsyslog.conf
             regexp: '^\$FileCreateMode\s+0640'
             line: "$FileCreateMode 0640"
             create: yes
             state: present
-        - name: Disable TCP port listening on non log hosts (rsylog.d conf files)
+        - name: ALL -> Disable TCP port listening on non log hosts (rsylog.d conf files)
           lineinfile:
             dest: "{{ item.path }}"
             regexp: '^\$InputTCPServerRun'
             state: absent
           loop: "{{ rsyslog_module_found.files }}"
-        - name: Disable TCP port listening on non log hosts (main rsyslog conf file)
+        - name: ALL -> Disable TCP port listening on non log hosts (main rsyslog conf file)
           lineinfile:
             dest: "/etc/rsyslog.conf"
             regexp: '^\$InputTCPServerRun'
             state: absent
-        - name: Enable loading of imtcp module on log hosts
+        - name: ALL -> Enable loading of imtcp module on log hosts
           lineinfile:
             dest: /etc/rsyslog.d/CIS.conf
             regexp: '^\$ModLoad\s+imtcp'
@@ -1224,7 +1227,7 @@
             owner: root
             group: root
             mode: 0644
-        - name: Enable TCP Port listening on port {{ log_port }}
+        - name: ALL -> Enable TCP Port listening on port {{ log_port }}
           lineinfile:
             dest: /etc/rsyslog.d/CIS.conf
             regexp: '^\$InputTCPServerRun {{ log_port }}'
@@ -1233,7 +1236,7 @@
             owner: root
             group: root
             mode: 0644
-        - name: Set address in rsyslog.conf
+        - name: ALL -> Set address in rsyslog.conf
           lineinfile:
             dest: /etc/rsyslog.conf
             regexp: '^#\*.\* @@remote-host:514'
@@ -1242,16 +1245,16 @@
             owner: root
             group: root
             mode: 0644
-        - name: Restart rsyslog server
+        - name: ALL -> Restart rsyslog server
           service:
             name: rsyslog
             state: restarted
             enabled: yes
           changed_when: false
       when: log_host is defined and log_host
-    - name: Find rsyslog files not owned by root and fix ownership
+    - name: ALL -> Find rsyslog files not owned by root and fix ownership
       block:
-        - name: Find rsyslog files not owned by root
+        - name: ALL -> Find rsyslog files not owned by root
           shell: |
             find $(cat /etc/rsyslog.conf /etc/rsyslog.d/*.conf | \
                  grep -v "#" | awk '{print $2}' | grep -v "^$" |grep "^\/" | grep log|grep -v "/etc/rsyslog.d") \
@@ -1259,10 +1262,10 @@
           register: nonroot_rsyslogs
           failed_when: false
           changed_when: false
-        - name: Report to user rsyslog files not owned by root if any
+        - name: ALL -> Report to user rsyslog files not owned by root if any
           debug: msg="{{ nonroot_rsyslogs.stdout_lines }}"
           when: nonroot_rsyslogs.stdout | length > 0
-        - name: Change ownership of file to root
+        - name: ALL -> Change ownership of file to root
           file:
             path: "{{ item }}"
             owner: root
@@ -1270,14 +1273,14 @@
           when: nonroot_rsyslogs.stdout | length > 0
   tags: RSYSLOG
 
-- name: Ensure audit log files have mode 0600 and owned by root
+- name: ALL -> Ensure audit log files have mode 0600 and owned by root
   block:
-    - name: Find rsyslog log files from /etc/audit/auditd.conf
+    - name: ALL -> Find rsyslog log files from /etc/audit/auditd.conf
       shell: grep "^log_file" /etc/audit/auditd.conf | awk '{print $3}'
       register: audit_logs
       failed_when: false
       changed_when: false
-    - name: Change ownership and mode of file to root and 600
+    - name: ALL -> Change ownership and mode of file to root and 600
       file:
         path: "{{ item }}"
         owner: root
@@ -1285,12 +1288,12 @@
       loop: "{{ audit_logs.stdout_lines }}"
       when: audit_logs.stdout | length > 0
       failed_when: false
-    - name: Find rsyslog log folder from /etc/audit/auditd.conf
+    - name: ALL -> Find rsyslog log folder from /etc/audit/auditd.conf
       command: dirname "{{ audit_logs.stdout_lines }}"
       register: audit_logs_folder
       failed_when: false
       changed_when: false
-    - name: Change ownership and mode of folder to root and 644
+    - name: ALL -> Change ownership and mode of folder to root and 644
       file:
         path: "{{ item }}"
         owner: root
@@ -1299,16 +1302,16 @@
       loop: "{{ audit_logs_folder.stdout_lines }}"
       when: audit_logs_folder.stdout | length > 0
 
-- name: USB mass storage must be disabled
+- name: ALL -> USB mass storage must be disabled
   copy:
     dest: "/etc/modprobe.d/blacklist.conf"
     mode: '0644'
     content: |
        blacklist usb-storage
 
-- name: The system must not have unnecessary accounts and remove trails
+- name: ALL -> The system must not have unnecessary accounts and remove trails
   block:
-    - name: The system must not have unnecessary accounts
+    - name: ALL -> The system must not have unnecessary accounts
       user:
         name: "{{ item }}"
         state: absent
@@ -1320,7 +1323,7 @@
         - shutdown
         - halt
         - reboot
-    - name: Remove ftp system accounts if system is not FTP server
+    - name: ALL -> Remove ftp system accounts if system is not FTP server
       user:
         name: "{{ item }}"
         state: absent
@@ -1328,7 +1331,7 @@
         - ftp
         - ftpsecure
       when: not system_is_ftp
-    - name: Delete default unowned files after removal of unneeded accounts
+    - name: ALL -> Delete default unowned files after removal of unneeded accounts
       file:
         path: "{{ item }}"
         state: absent
@@ -1342,69 +1345,69 @@
         - /var/log/news/news.err
         - /var/log/news/news.notice
 
-- name: Check does anyone else except root having a UID 0
+- name: ALL -> Check does anyone else except root having a UID 0
   block:
-    - name: Check does anyone else except root having a UID 0
+    - name: ALL -> Check does anyone else except root having a UID 0
       shell: |
         awk -F: '($3 == "0") {print}' /etc/passwd | grep -v root
       failed_when: false
       changed_when: false
       register: uuid_root
-    - name: Report to user other accounts except root with uuid 0 - FIX THIS MANUALLY
+    - name: ALL -> Report to user other accounts except root with uuid 0 - FIX THIS MANUALLY
       debug: msg="{{ uuid_root.stdout }}"
       when: uuid_root.stdout | length > 0
       changed_when: true
 
-- name: All user home directories must have mode 0750 or less permissive
+- name: ALL -> All user home directories must have mode 0750 or less permissive
   block:
-    - name: Get list of candidates for chmod 700 /home/dirs
+    - name: ALL -> Get list of candidates for chmod 700 /home/dirs
       shell: |
         find /home -maxdepth 1 -mindepth 1 -type d -perm /0077
       register: home_to_0700
       changed_when: false
-    - name: List candidates for chmod 700 /home/dirs, if any
+    - name: ALL -> List candidates for chmod 700 /home/dirs, if any
       debug:
         msg: "Candidate(s) for chmod 700 --> {{ home_to_0700.stdout_lines }}"
       when: home_to_0700.stdout | length > 0
       changed_when: home_to_0700.stdout | length > 0
-    - name: CHMOD 0700 for candidates (if they exists)
+    - name: ALL -> CHMOD 0700 for candidates (if they exists)
       shell: |
         find /home -maxdepth 1 -mindepth 1 -type d \
         -exec chmod 0700 {} \;
       when: home_to_0700.stdout | length > 0
       changed_when: home_to_0700.stdout | length > 0
-    - name: Set a+x for /home
+    - name: ALL -> Set a+x for /home
       file:
         path: /home
         mode: 'a+x'
 
-- name: Find and report .shost and .equiv files on the system
+- name: ALL -> Find and report .shost and .equiv files on the system
   block:
-    - name: Remove /etc/hosts.equiv if exists
+    - name: ALL -> Remove /etc/hosts.equiv if exists
       file:
         path: /etc/hosts.equiv
         state: absent
-    - name: Find other .shost and .equiv files on the system
+    - name: ALL -> Find other .shost and .equiv files on the system
       shell: |
         find / -mount -type f -name "*.shost" -o -name "*.equiv"
       failed_when: false
       changed_when: false
       register: find_shost
-    - name: Report shosts file to user - FIX THIS MANUALLY
+    - name: ALL -> Report shosts file to user - FIX THIS MANUALLY
       debug: msg="{{ find_shost.stdout_lines }}"
       when: find_shost.stdout | length > 0
       changed_when: true
 
-- name: Setup banners
+- name: ALL -> Setup banners
   block:
-    - name: Install motd banners
+    - name: ALL -> Install motd banners
       copy:
         src: files/motd
         dest: /etc/motd
         owner: root
         group: root
         mode: 0644
-    - name: Install issue banners
+    - name: ALL -> Install issue banners
       copy:
         dest: /etc/issue
         content: |
@@ -1414,7 +1417,7 @@
         owner: root
         group: root
         mode: 0644
-    - name: Install issue.net banners
+    - name: ALL -> Install issue.net banners
       copy:
         dest: /etc/issue.net
         content: |
@@ -1424,7 +1427,7 @@
         owner: root
         group: root
         mode: 0644
-    - name: Set up the dconf profile for GDM
+    - name: ALL -> Set up the dconf profile for GDM
       blockinfile:
         path: /etc/dconf/profile/gdm
         owner: root
@@ -1435,7 +1438,7 @@
           system-db:gdm
           file-db:/usr/share/gdm/greeter-dconf-defaults
       when: graphical_inteface is defined and graphical_interface
-    - name: Set GDM to use banner message
+    - name: ALL -> Set GDM to use banner message
       blockinfile:
         path: /etc/dconf/db/gdm.d/01-banner-message
         owern: root
@@ -1447,7 +1450,7 @@
           banner-message-text='Authorized uses only. All activity may be monitored and reported.'
       when: graphical_inteface is defined and graphical_interface
 
-- name: Folder /root to have 700
+- name: ALL -> Folder /root to have 700
   file:
     path: "/root"
     owner: root
@@ -1455,22 +1458,22 @@
     mode: "0700"
     state: directory
 
-- name: Users must provide a password for privilege escalation
+- name: ALL -> Users must provide a password for privilege escalation
   block:
-    - name: Find all sudoers files in /etc/sudoers.d
+    - name: ALL -> Find all sudoers files in /etc/sudoers.d
       find:
         paths: "/etc/sudoers.d"
       register: sudoers
-    - name: Remove NOPASSWD option from all files in /etc/sudoers.d
+    - name: ALL -> Remove NOPASSWD option from all files in /etc/sudoers.d
       replace:
         dest: "{{ item.path }}"
         regexp: 'NOPASSWD:'
         replace: ""
       with_items: "{{ sudoers.files }}"
 
-- name: CHMOD 0000 --> shadow, gshadow, passwd-, shadow-, group-
+- name: ALL -> CHMOD 0000 --> shadow, gshadow, passwd-, shadow-, group-
   block:
-    - name: Ensure permissions on shadow, gshadow, passwd-, shadow-, group-
+    - name: ALL -> Ensure permissions on shadow, gshadow, passwd-, shadow-, group-
       file:
         path: "{{ item }}"
         owner: root
@@ -1485,7 +1488,7 @@
         - /etc/group-
       failed_when: false
 
-- name: CHMOD 0644 --> /etc/passwd /etc/group
+- name: ALL -> CHMOD 0644 --> /etc/passwd /etc/group
   file:
     path: "{{ item }}"
     owner: root
@@ -1495,26 +1498,26 @@
     - /etc/passwd
     - /etc/group
 
-- name: Copy RKHUNTER to server
+- name: ALL -> Copy RKHUNTER to server
   block:
-    - name: Check does rkhunter exists
+    - name: ALL -> Check does rkhunter exists
       shell: |
         /usr/local/bin/rkhunter -V
       register: rkhunter_out
       failed_when: false
       changed_when: false
-    - name: Extract rkhunter.tar.gz into /tmp
+    - name: ALL -> Extract rkhunter.tar.gz to /tmp
       unarchive:
         src: files/rkhunter/rkhunter.tar.gz
         dest: /tmp/
       when: rkhunter_out.rc > 0
-    - name: Install rkhunter
+    - name: ALL -> Install rkhunter
       shell: |
         cd /tmp/rkhunter-*
         bash installer.sh --install
         rm -rf /tmp/rkhunter-*
       when: rkhunter_out.rc > 0
-    - name: Create a symbolic link /bin/rkhunter
+    - name: ALL -> Create a symbolic link /bin/rkhunter
       file:
         src: /usr/local/bin/rkhunter
         dest: /bin/rkhunter
@@ -1524,9 +1527,9 @@
       when: rkhunter_out.rc > 0
   tags: RKHUNTER
 
-- name: Set single user password
+- name: ALL -> Set single user password
   block:
-    - name: Set single user password
+    - name: ALL -> Set single user password
       replace:
         dest: /usr/lib/systemd/system/{{ item }}
         regexp: '^ExecStart=-((?!/bin/sh\s+-c\s+\"\s+/sbin/sulogin).)*'
@@ -1535,18 +1538,18 @@
         - rescue.service
         - emergency.service
 
-- name: The x86 Ctrl-Alt-Delete key sequence must be disabled
+- name: ALL -> The x86 Ctrl-Alt-Delete key sequence must be disabled
   systemd:
     name: ctrl-alt-del.target
     masked: yes
     state: stopped
     enabled: no
 
-- name: Configure system auditing
+- name: ALL -> Configure system auditing
   block:
-    - name: Setup audit
+    - name: ALL -> Setup audit
       block:
-        - name: Configure audit log storage size
+        - name: ALL -> Configure audit log storage size
           replace:
             path: /etc/audit/auditd.conf
             regexp: "{{ item.find }}"
@@ -1557,7 +1560,7 @@
             - { find: '^space_left_action\s+=\s+((?!email).)*$', replace: 'space_left_action = email' }
             - { find: '^action_mail_acct\s+=\s+((?!root).)*$', replace: 'action_mail_acct = root' }
             - { find: '^admin_space_left_action\s+=\s+((?!suspend).)*$', replace: 'admin_space_left_action = suspend' }
-        - name: Ensure auditing for processes that start prior to auditd
+        - name: ALL -> Ensure auditing for processes that start prior to auditd
           lineinfile:
             path: /etc/default/grub
             regexp: '^\s*GRUB_CMDLINE_LINUX.*audit=1'
@@ -1566,63 +1569,63 @@
           changed_when: false
           register: audit_exist
           failed_when: false
-        - name: Enable audit service in grub
+        - name: ALL -> Enable audit service in grub
           replace:
             path: /etc/default/grub
             regexp: '^GRUB_CMDLINE_LINUX="'
             replace: 'GRUB_CMDLINE_LINUX="audit=1 '
           register: grub_has_changed
           when: audit_exist.changed
-        - name: Rebuild grub
+        - name: ALL -> Rebuild grub
           command: /usr/sbin/grub2-mkconfig -o /boot/grub2/grub.cfg
           when: grub_has_changed.changed
-        - name: Ensure to collect events that modify date/time
+        - name: ALL -> Ensure to collect events that modify date/time
           template:
             dest: /etc/audit/rules.d/datetime.rules
             src: files/aurules/datetime.rules
             owner: root
             group: root
             mode: 0600
-        - name: Ensure events that modify user/group information are collected
+        - name: ALL -> Ensure events that modify user/group information are collected
           template:
             dest: /etc/audit/rules.d/user-group-info.rules
             src: files/aurules/user-group-info.rules
             owner: root
             group: root
             mode: 0600
-        - name: Ensure to collect events that modify network
+        - name: ALL -> Ensure to collect events that modify network
           template:
             dest: /etc/audit/rules.d/network.rules
             src: files/aurules/network.rules
             owner: root
             group: root
             mode: 0600
-        - name: Ensure system logins are collected
+        - name: ALL -> Ensure system logins are collected
           template:
             dest: /etc/audit/rules.d/login.rules
             src: files/aurules/login.rules
             owner: root
             group: root
             mode: 0600
-        - name: Ensure session initiation information is collected
+        - name: ALL -> Ensure session initiation information is collected
           template:
             dest: /etc/audit/rules.d/sessions.rules
             src: files/aurules/sessions.rules
             owner: root
             group: root
             mode: 0600
-        - name: Determine the Minimum UID for new, non-system, accounts
+        - name: ALL -> Determine the Minimum UID for new, non-system, accounts
           command: "/usr/bin/awk '/^s*UID_MIN/{print $2}' /etc/login.defs"
           register: min_uid
           changed_when: min_uid.rc == "2"
-        - name: Ensure modifications to discretionary access controls are collected
+        - name: ALL -> Ensure modifications to discretionary access controls are collected
           template:
             dest: /etc/audit/rules.d/dac.rules
             src: files/aurules/dac.rules
             owner: root
             group: root
             mode: 0600
-        - name: Ensure unsuccessful unauthorized file access attempts are collected
+        - name: ALL -> Ensure unsuccessful unauthorized file access attempts are collected
           template:
             dest: /etc/audit/rules.d/bad-file-access.rules
             content:
@@ -1630,38 +1633,38 @@
             owner: root
             group: root
             mode: 0600
-        - name: Ensure successful file system mounts are collected
+        - name: ALL -> Ensure successful file system mounts are collected
           template:
             dest: /etc/audit/rules.d/file-system-mounts.rules
             src: files/aurules/file-system-mounts.rules
             owner: root
             group: root
             mode: 0600
-        - name: Ensure file deletion events by users are collected
+        - name: ALL -> Ensure file deletion events by users are collected
           template:
             dest: /etc/audit/rules.d/delete.rules
             src: files/aurules/delete.rules
             owner: root
             group: root
             mode: 0600
-        - name: Set sudoer log
+        - name: ALL -> Set sudoer log
           set_fact:
             sudo_log: '/var/log/sudoers'
-        - name: Ensure sysadmin actions (sudolog) are collected
+        - name: ALL -> Ensure sysadmin actions (sudolog) are collected
           template:
             dest: /etc/audit/rules.d/sudolog.rules
             src: files/aurules/sudolog.rules
             owner: root
             group: root
             mode: 0600
-        - name: Ensure kernel module loading and unloading is collected
+        - name: ALL -> Ensure kernel module loading and unloading is collected
           template:
             dest: /etc/audit/rules.d/modules.rules
             src: files/aurules/modules.rules
             owner: root
             group: root
             mode: 0600
-        - name: Ensure audit configuration is immutable
+        - name: ALL -> Ensure audit configuration is immutable
           copy:
             dest: /etc/audit/rules.d/99-finalize.rules
             content: |
@@ -1669,23 +1672,23 @@
             owner: root
             group: root
             mode: 0600
-        - name: Custom audit rules
+        - name: ALL -> Custom audit rules
           copy:
             dest: /etc/audit/rules.d/audit.rules
             src: files/aurules/{{ ansible_os_family }}-audit.rules
             owner: root
             group: root
             mode: 0600
-        - name: Restart auditd
+        - name: ALL -> Restart auditd
           service:
             name: auditd
             state: started
             enabled: yes
 
-- name: Audit log files on a regular basis
+- name: ALL -> Audit log files on a regular basis
   block:
       #CHMOD 0640 setup #######################################################
-    - name: CHMOD 0640 - List candidate files in /var/log
+    - name: ALL -> CHMOD 0640 - List candidate files in /var/log
       shell: |
         find /var/log        -type f -perm /0137 -name "boot.log" 2>/dev/null; \
         find /var/log        -type f -perm /0137 -name "messages" 2>/dev/null; \
@@ -1704,65 +1707,65 @@
         find /var/log        -type f -perm /0137 -name "apache*"  2>/dev/null
       register: candidates_0640
       changed_when: false
-    - name: CHMOD 0640 - Report candidate files in /var/log
+    - name: ALL -> CHMOD 0640 - Report candidate files in /var/log
       debug:
         msg: "{{ candidates_0640.stdout_lines }}"
       when: candidates_0640.stdout | length > 0
       changed_when: candidates_0640.stdout | length > 0
-    - name: CHMOD 0640 - Setup 0640 for candidate files in /var/log
+    - name: ALL -> CHMOD 0640 - Setup 0640 for candidate files in /var/log
       file:
         path: "{{ item }}"
         mode: '0640'
       with_items: "{{ candidates_0640.stdout_lines }}"
       when: candidates_0640.stdout | length > 0
       # CHMOD 0660 setup ######################################################
-    - name: CHMOD 0660 - List candidate files in /var/log (pacemaker, nsclient)
+    - name: ALL -> CHMOD 0660 - List candidate files in /var/log (pacemaker, nsclient)
       shell: |
         find /var/log -type f -perm /0117 -name "pacemaker.log"   2>/dev/null; \
         find /var/log -type f -perm /0117 -name "pacemaker.log-*" 2>/dev/null; \
         find /var/log -type f -perm /0117 -name "nsclient.log*"   2>/dev/null
       register: candidates_0660
       changed_when: false
-    - name: CHMOD 0660 - Report candidate files (pacemaker, nsclient)
+    - name: ALL -> CHMOD 0660 - Report candidate files (pacemaker, nsclient)
       debug:
         msg: "{{ candidates_0660.stdout_lines }}"
       when: candidates_0660.stdout | length > 0
       changed_when: candidates_0660.stdout | length > 0
-    - name: CHMOD 0660 - Setup 0660 for candidate files in /var/log (pacemaker, nsclient)
+    - name: ALL -> CHMOD 0660 - Setup 0660 for candidate files in /var/log (pacemaker, nsclient)
       file:
         path: "{{ item }}"
         mode: '0660'
       with_items: "{{ candidates_0660.stdout_lines }}"
       when: candidates_0660.stdout | length > 0
       # CHMOD 0733 setup ######################################################
-    - name: CHMOD 0733 - Check folder /var/log/sudosh
+    - name: ALL -> CHMOD 0733 - Check folder /var/log/sudosh
       shell: |
         find /var/log -type d -perm /0044 -name "sudosh" 2>/dev/null
       register: candidates_0733
       changed_when: false
-    - name: CHMOD 0733 - Report folder /var/log/sudosh
+    - name: ALL -> CHMOD 0733 - Report folder /var/log/sudosh
       debug:
         msg: "{{ candidates_0733.stdout_lines }}"
       when: candidates_0733.stdout | length > 0
       changed_when: candidates_0733.stdout | length > 0
-    - name: CHMOD 0733 - Setup 0733 for folder /var/log/sudosh
+    - name: ALL -> CHMOD 0733 - Setup 0733 for folder /var/log/sudosh
       file:
         path: "{{ item }}"
         mode: '0733'
       with_items: "{{ candidates_0733.stdout_lines }}"
       when: candidates_0733.stdout | length > 0
       # CHMOD 0664 setup ######################################################
-    - name: CHMOD 0664 - Check file /var/log/wtmp
+    - name: ALL -> CHMOD 0664 - Check file /var/log/wtmp
       shell: |
         find /var/log -type f -perm /0113 -name "wtmp" 2>/dev/null
       register: candidates_0664
       changed_when: false
-    - name: CHMOD 0664 - Report file /var/log/wtmp
+    - name: ALL -> CHMOD 0664 - Report file /var/log/wtmp
       debug:
         msg: "{{ candidates_0664.stdout_lines }}"
       when: candidates_0664.stdout | length > 0
       changed_when: candidates_0664.stdout | length > 0
-    - name: CHMOD 0644 - Setup 0664 for file /var/log/wtmp
+    - name: ALL -> CHMOD 0644 - Setup 0664 for file /var/log/wtmp
       file:
         path: "{{ item }}"
         mode: '0664'

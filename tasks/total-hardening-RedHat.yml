@@ -1,7 +1,7 @@
 # The most problematic part for most of the Linux admins. It will remove bash history.
-- name: Disable storage of Bash history (kill bash_history)
+- name: RHEL -> Disable storage of Bash history (kill bash_history)
   block:
-    - name: Disable the storage of Bash History
+    - name: RHEL -> RDisable the storage of Bash History
       blockinfile:
         path: /etc/bashrc
         marker: "########## {mark} Disable the storage of Bash History ##########"
@@ -9,7 +9,7 @@
         block: |
           export HISTFILESIZE=0
           unset HISTFILE
-    - name: Add small notice related to bash history in /etc/profile for confused users
+    - name: RHEL -> Add small notice related to bash history in /etc/profile for confused users
       lineinfile:
         path: /etc/profile
         state: present
@@ -17,22 +17,22 @@
   when: disable_bash_history
   tags: BASH_HISTORY
 
-- name: Ensure crond is enabled
+- name: RHEL -> Ensure crond is enabled
   service:
     name: crond
     enabled: yes
     state: started
   tags: CRON
 
-- name: Install common packages
+- name: RHEL -> Install common packages
   block:
-    - name: Install some common packages
+    - name: RHEL -> Install some common packages
       yum:
         name:
           - authconfig
           - firewalld
         state: present
-    - name: Install some common packages (EL7)
+    - name: RHEL -> Install some common packages (EL7)
       yum:
         name:
           - yum-plugin-security
@@ -43,23 +43,26 @@
       when:
         - ansible_os_family == 'RedHat'
         - ansible_distribution_major_version|int == 7
-    - name: Install some common packages (EL8)
+    - name: RHEL -> Install some common packages (EL8/9)
       yum:
         name:
           - python3-policycoreutils
         state: present
-      when:
-        - ansible_os_family == 'RedHat'
-        - ansible_distribution_major_version|int == 8
+      when: >
+        ansible_os_family == 'RedHat' and
+        (
+          ansible_distribution_major_version|int == 8 or
+          ansible_distribution_major_version|int == 9
+        )
   tags:
     - COMMON_PACKAGES
     - SSHD
     - TCP_WRAPPERS
 
 # Disable some of the most problematic services if they exists
-- name: Services
+- name: RHEL -> Services
   block:
-    - name: Disable rhnsd
+    - name: RHEL -> Disable rhnsd
       service:
         name: rhnsd
         enabled: no
@@ -67,9 +70,9 @@
       failed_when: false
   tags: RHNSD
 
-- name: Disable unused and dangerous filesystems
+- name: RHEL -> Disable unused and dangerous filesystems
   block:
-    - name: Disable unused filesystems
+    - name: RHEL -> Disable unused filesystems
       copy:
         dest: "/etc/modprobe.d/stig-items.conf"
         mode: '0644'
@@ -95,19 +98,19 @@
 
 # If you use some yours repositories and you don't use gpgcheck, after this task - it will fail for use.
 # All packages needs to be signed with related GPG signature, otherwise its not secure.
-- name: Ensure yum GPG keys are configured
+- name: RHEL -> Ensure yum GPG keys are configured
   block:
-    - name: Set master yum.conf gpgcheck to '1'
+    - name: RHEL -> Set master yum.conf gpgcheck to '1'
       replace:
         dest: /etc/yum.conf
         regexp: '^gpgcheck\s*=\s*[^1]*$'
         replace: "gpgcheck = 1"
-    - name: Find all repo files in /etc/yum.repos.d/
+    - name: RHEL -> Find all repo files in /etc/yum.repos.d/
       find:
         paths: "/etc/yum.repos.d"
         patterns: "*.repo"
       register: yumrepos
-    - name: Set all repos gpgchecks to '1'
+    - name: RHEL -> Set all repos gpgchecks to '1'
       replace:
         dest: "{{ item.path }}"
         regexp: '^gpgcheck\s*=\s*[^1]*$'
@@ -115,9 +118,9 @@
       with_items: "{{ yumrepos.files }}"
   tags: GPG_KEYS
 
-- name: Kernel Hardening
+- name: RHEL -> Kernel Hardening
   block:
-    - name: Set relevant kernel paramters
+    - name: RHEL -> Set relevant kernel paramters
       sysctl:
         name: "{{ item.name }}"
         value: "{{ item.value }}"
@@ -151,7 +154,7 @@
         - { name: 'net.ipv6.conf.all.accept_source_route', value: '0' }
         - { name: 'net.ipv6.conf.default.accept_redirects', value: '0' }
         - { name: 'net.ipv6.conf.default.accept_source_route', value: '0' }
-    - name: Set relevant kernel parameters
+    - name: RHEL -> Set relevant kernel parameters
       sysctl:
         name: "{{ item.name }}"
         value: "{{ item.value }}"
@@ -163,7 +166,7 @@
         - { name: 'fs.protected_symlinks', value: '1' }
         - { name: 'kernel.yama.ptrace_scope', value: '1' }
         - { name: 'net.core.bpf_jit_harden', value: '2' }
-    - name: Set relevant kernel parameters (EL8)
+    - name: RHEL -> Set relevant kernel parameters (EL8/9)
       sysctl:
         name: "{{ item.name }}"
         value: "{{ item.value }}"
@@ -173,17 +176,22 @@
       loop:
         - { name: 'fs.protected_fifos', value: '2' }
         - { name: 'fs.protected_regular', value: '2' }
-      when: ansible_os_family == 'RedHat' and ansible_distribution_major_version|int == 8
-    - name: Setup kernel parameters on non-docker systems
+      when: >
+        ansible_os_family == 'RedHat' and
+        (
+          ansible_distribution_major_version|int == 8 or
+          ansible_distribution_major_version|int == 9
+        )
+    - name: RHEL -> Setup kernel parameters on non-docker systems
       block:
-        - name: Check is docker or podman installed
+        - name: RHEL -> Check is docker or podman installed
           shell: rpm -qa | grep "docker\|podman"
           args:
            warn: false
           register: docker
           failed_when: false
           changed_when: false
-        - name: Setup kernel parameters on non-docker systems
+        - name: RHEL -> Setup kernel parameters on non-docker systems
           sysctl:
             name: "{{ item.name }}"
             value: "{{ item.value }}"
@@ -196,9 +204,9 @@
           when: docker.stdout | length == 0
   tags: KERNEL_HARDENING
 
-- name: Changes to LILO, EFI and GRUB
+- name: RHEL -> Changes to LILO, EFI and GRUB
   block:
-    - name: Check if the EFI directory exists
+    - name: RHEL -> Check if the EFI directory exists
       find:
         paths: "/boot/efi/EFI"
         pattern: grub.cfg
@@ -207,19 +215,19 @@
     - debug: msg="{{ efidir.files[0].path }}"
       when: >
         efidir.files
-    - name: Set variable for grub.cfg in EFI location
+    - name: RHEL -> Set variable for grub.cfg in EFI location
       set_fact:
         grub_cfg_path: "{{ efidir.files[0].path }}"
       when: efidir.files
-    - name: Check if the LILO path exists
+    - name: RHEL -> Check if the LILO path exists
       stat:
         path: "/boot/grub2/grub.cfg"
       register: grubdir
-    - name: Set variable for grub.cfg in LILO location
+    - name: RHEL -> Set variable for grub.cfg in LILO location
       set_fact:
         grub_cfg_path: "{{ grubdir.stat.path }}"
       when: grubdir.stat.path is defined
-    - name: Set chmod 600 on grub.cfg
+    - name: RHEL -> Set chmod 600 on grub.cfg
       file:
         path: "{{ item }}"
         owner: root
@@ -228,7 +236,7 @@
       loop:
         - "{{ grub_cfg_path }}"
         - /boot/grub2/grubenv
-    - name: Ensure SELinux is not disabled in bootloader configuration
+    - name: RHEL -> Ensure SELinux is not disabled in bootloader configuration
       replace:
         dest: /etc/default/grub
         regexp: "{{ item }}"
@@ -239,9 +247,9 @@
       when:
         - selinux is defined
         - selinux != "Disabled"
-    - name: Find if IPv6 is currently in the grub file and disable it
+    - name: RHEL -> Find if IPv6 is currently in the grub file and disable it
       block:
-        - name: Find if IPv6 is currently in the grub file, shows changed when it is in the file
+        - name: RHEL -> Find if IPv6 is currently in the grub file, shows changed when it is in the file
           lineinfile:
             path: /etc/default/grub
             regexp: '^\s*GRUB_CMDLINE_LINUX.*ipv6.disable=1'
@@ -250,24 +258,24 @@
           changed_when: false
           register: ipv6_disable_grub
           failed_when: false
-        - name: Disable IPv6 in grub
+        - name: RHEL -> Disable IPv6 in grub
           replace:
             path: /etc/default/grub
             regexp: '^GRUB_CMDLINE_LINUX="'
             replace: 'GRUB_CMDLINE_LINUX="ipv6.disable=1 '
           when: ipv6_disable_grub.changed
-        - name: Rebuild grub
+        - name: RHEL -> Rebuild grub
           command: /usr/sbin/grub2-mkconfig -o /boot/grub2/grub.cfg
           when: ipv6_disable_grub.changed
   tags: GRUB
 
-- name: Disable display manager if graphical desktop not needed
+- name: RHEL -> Disable display manager if graphical desktop not needed
   block:
-    - name: Get default runlevel
+    - name: RHEL -> Get default runlevel
       stat:
         path: /etc/systemd/system/default.target
       register: default_runlevel_out
-    - name: Disable the gdm display manager if system is not in graphical.target
+    - name: RHEL -> Disable the gdm display manager if system is not in graphical.target
       systemd:
         name: gdm
         enabled: no
@@ -275,10 +283,10 @@
         state: stopped
         daemon-reload: yes
       when: default_runlevel_out.stat.lnk_target is search("graphical.target")
-    - name: Set current runlevel to multi-user.target
+    - name: RHEL -> Set current runlevel to multi-user.target
       command: /usr/bin/systemctl isolate multi-user.target
       when: default_runlevel_out.stat.lnk_target is search("graphical.target")
-    - name: Det default runlevel to multi-user.target
+    - name: RHEL -> Det default runlevel to multi-user.target
       file:
         src: /lib/systemd/system/multi-user.target
         dest: /etc/systemd/system/default.target
@@ -287,15 +295,15 @@
       when: default_runlevel_out.stat.lnk_target is search("graphical.target")
   tags: DM
 
-- name: Disable nfs-server if it's not used
+- name: RHEL -> Disable nfs-server if it's not used
   block:
-    - name: Check is there some content in /etc/exports
+    - name: RHEL -> Check is there some content in /etc/exports
       shell: |
         grep -v "^[[:space:]]*#\|^[[:space:]]*$" /etc/exports
       register: exports_content
       failed_when: false
       changed_when: false
-    - name: Stop and disable NFS service
+    - name: RHEL -> Stop and disable NFS service
       service:
         name: nfs-server
         state: stopped
@@ -305,16 +313,16 @@
   tags: NFS
 
 # Require tcp_wrappers installed
-- name: TCP Wrappers (EL7)
+- name: RHEL -> TCP Wrappers (EL7)
   block:
-    - name: Create basic hosts.allow
+    - name: RHEL -> Create basic hosts.allow
       lineinfile:
         dest: /etc/hosts.allow
         owner: root
         group: root
         mode: 0644
         line: "ALL: 127.0.0.1"
-    - name: Set permissions on tcpwrappers files (EL7)
+    - name: RHEL -> Set permissions on tcpwrappers files (EL7)
       file:
         path: "{{ item }}"
         owner: root
@@ -328,9 +336,9 @@
     - ansible_distribution_major_version|int == 7
   tags: TCP_WRAPPERS
 
-- name: Configure PAM files and password requirements
+- name: RHEL -> Configure PAM files and password requirements
   block:
-    - name: Setup /etc/security/pwquality.conf
+    - name: RHEL -> Setup /etc/security/pwquality.conf
       copy:
         dest: "/etc/security/pwquality.conf"
         mode: '0644'
@@ -344,7 +352,7 @@
           minclass = 4
           maxrepeat = 3
           maxclassrepeat = 0
-    - name: Configure PAM files and password requirements (system-auth)
+    - name: RHEL -> Configure PAM files and password requirements (system-auth)
       copy:
         dest: /etc/pam.d/system-auth
         mode: "0644"
@@ -374,7 +382,7 @@
            -session     optional     pam_systemd.so
            session     [success=1 default=ignore] pam_succeed_if.so service in crond quiet use_uid
            session     required      pam_unix.so
-    - name: Configure PAM files and password requirements (password-auth)
+    - name: RHEL -> Configure PAM files and password requirements (password-auth)
       copy:
         mode: "0644"
         dest: /etc/pam.d/password-auth
@@ -406,47 +414,47 @@
            session     required      pam_unix.so
   tags: PAM
 
-- name: Umasks and login.defs setup
+- name: RHEL -> Umasks and login.defs setup
   block:
-    - name: Lock default services accounts. Needs to be done before setup login.defs
+    - name: RHEL -> Lock default services accounts. Needs to be done before setup login.defs
       block:
-        - name: Get system users for which password will be changed to random UID>0 and <UID_MIN
+        - name: RHEL -> Get system users for which password will be changed to random UID>0 and <UID_MIN
           shell: |
             SYS_UID_MIN="$(awk '/^UID_MIN/ {print $2}' /etc/login.defs)"
             awk -v a="${SYS_UID_MIN}" -F:   '$3<a {print $1}' /etc/passwd | grep -v "root" | xargs
           register: sysusers
           changed_when: false
-        - name: Report for which users password will be locked
+        - name: RHEL -> Report for which users password will be locked
           debug: msg="{{ sysusers.stdout }}"
           when: sysusers.stdout | length > 0
           changed_when: true
-        - name: Lock to all fetched system users
+        - name: RHEL -> Lock to all fetched system users
           shell: |
             for i in {{ sysusers.stdout }} ; do
               echo "passwd -l ${i}" >> /tmp/provera1
               passwd -l ${i}
             done
-        - name: Get all system users (UID>0 and <UID_MIN) except shutdown with access to shell
+        - name: RHEL -> Get all system users (UID>0 and <UID_MIN) except shutdown with access to shell
           shell: |
             SYS_UID_MIN="$(awk '/^UID_MIN/ {print $2}' /etc/login.defs)"
             cat /etc/passwd | grep -v "nologin$\|false$\|^root\|sync\|shutdown\|halt" | awk -v a="${SYS_UID_MIN}" -F: '$3<$a {print $1}'
           register: sys_wo_nologin
           failed_when: false
           changed_when: false
-        - name: Report to user account for which we will set shell to /bin/false
+        - name: RHEL -> Report to user account for which we will set shell to /bin/false
           debug: msg="Shell will be removed for --> {{ sys_wo_nologin.stdout }}"
           when: sys_wo_nologin.stdout | length > 0
-        - name: Set /bin/false as a default shell for catched system users
+        - name: RHEL -> Set /bin/false as a default shell for catched system users
           shell: |
             for i in {{ sys_wo_nologin.stdout }} ; do
               echo "chsh -s /bin/false ${i}" >> /tmp/provera2
               chsh -s /bin/false ${i}
             done
           when: sys_wo_nologin.stdout | length > 0
-        - name: Report to user account there is no sysaccount without /bin/false
+        - name: RHEL -> Report to user account there is no sysaccount without /bin/false
           debug: msg="Noone of system users have access to shell"
           when: sys_wo_nologin.stdout | length == 0
-        - name: Setup login.defs file
+        - name: RHEL -> Setup login.defs file
           copy:
             dest: "/etc/login.defs"
             mode: '0644'
@@ -474,7 +482,7 @@
                FAILLOG_ENAB    yes
   tags: UMASK_LOGIN_DEFS
 
-- name: The system must not have accounts configured with blank or null passwords (EL7)
+- name: RHEL -> The system must not have accounts configured with blank or null passwords (EL7)
   replace:
     path: /etc/pam.d/system-auth-ac
     regexp: ' nullok'
@@ -486,23 +494,23 @@
     - ansible_distribution_major_version|int == 7
   tags: NULL_PASSWORD
 
-- name: The operating system must disable account identifiers (individuals, groups, roles, and devices) if the password expires.
+- name: RHEL -> The operating system must disable account identifiers (individuals, groups, roles, and devices) if the password expires.
   block:
-    - name: Setup INACTIVE=30 in /etc/default/useradd
+    - name: RHEL -> Setup INACTIVE=30 in /etc/default/useradd
       lineinfile:
         path: /etc/default/useradd
         regexp: '(.*)INACTIVE(.*)(?!30)'
         line: INACTIVE=30
-    - name: Find users with hashed password and setup their inactivity period to 30 days
+    - name: RHEL -> Find users with hashed password and setup their inactivity period to 30 days
       shell: |
         egrep ^[^:]+:[^\!*] /etc/shadow | grep -v "root"  | awk -F":" '$7 != 30 {print $1}' | xargs
       register: inactive_users_set
       changed_when: false
-    - name: Report to user accounts for which we will set inactivity period
+    - name: RHEL -> Report to user accounts for which we will set inactivity period
       debug: msg="{{ inactive_users_set.stdout_lines }}"
       when: inactive_users_set.stdout | length > 0
       changed_when: true
-    - name: Change their password inactivity period to 30 days
+    - name: RHEL -> Change their password inactivity period to 30 days
       shell: |
         for i in {{ inactive_users_set.stdout }} ; do
           chage --inactive 30 ${i}
@@ -510,7 +518,7 @@
       when: inactive_users_set.stdout | length > 0
   tags: INACTIVE
 
-- name: Workaround for boot.log and dmesg permissions on (EL7) (permissions are reset after reboot)
+- name: RHEL -> Workaround for permissions reset after boot for boot.log and dmesg (EL7)
   cron:
     name: "Permissions workaround for the files boot.log and dmesg"
     special_time: "reboot"
@@ -521,52 +529,52 @@
     - ansible_distribution_major_version|int == 7
   tags: AUDIT_LOG_FILES
 
-- name: Ensure core limits are set and dumps are disabled
+- name: RHEL -> Ensure core limits are set and dumps are disabled
   block:
-    - name: Ensure core soft limits are set
+    - name: RHEL -> Ensure core soft limits are set
       pam_limits:
         dest: /etc/security/limits.conf
         domain: "*"
         limit_type: hard
         limit_item: maxlogins
         value: "10"
-    - name: Ensure core dumps are restricted fs.suid_dumpable=0
+    - name: RHEL -> Ensure core dumps are restricted fs.suid_dumpable=0
       sysctl:
         name: fs.suid_dumpable
         value: "0"
         state: present
         reload: yes
-    - name: Ensure hard limit unlimited is disabled
+    - name: RHEL -> Ensure hard limit unlimited is disabled
       lineinfile:
         dest: /etc/security/limits.conf
         state: absent
         regexp: "^[*].*hard.*core.*unlimited.*"
-    - name: Ensure soft limit unlimited is disabled
+    - name: RHEL -> Ensure soft limit unlimited is disabled
       lineinfile:
         path: /etc/security/limits.conf
         regexp: "^[*].*soft.*core.*unlimited.*"
         state: absent
         backup: yes
-    - name: Ensure core hard limits are set
+    - name: RHEL -> Ensure core hard limits are set
       pam_limits:
         dest: /etc/security/limits.conf
         domain: "*"
         limit_type: hard
         limit_item: core
         value: "0"
-    - name: Ensure core soft limits are set
+    - name: RHEL -> Ensure core soft limits are set
       pam_limits:
         dest: /etc/security/limits.conf
         domain: "*"
         limit_type: soft
         limit_item: core
         value: "0"
-    - name: Disable core dumps in /etc/profile
+    - name: RHEL -> Disable core dumps in /etc/profile
       lineinfile:
         dest: /etc/profile
         regexp: "^ulimit.*-c.*!0"
         line: "ulimit -c 0"
-    - name: Disable core dumps in /etc/systemd/coredump.conf
+    - name: RHEL -> Disable core dumps in /etc/systemd/coredump.conf
       lineinfile:
         dest: /etc/systemd/coredump.conf
         regexp: "{{ item.regexp }}"
@@ -577,25 +585,25 @@
   tags: CORE_DUMPS_AND_LIMITS
 
 # Bug detected while changing SSH port, will work on this. Require libselinux-python, policycoreutils-python, python3-policycoreutils
-- name: Change default SSH port if asked
+- name: RHEL -> Change default SSH port if asked
   block:
-    - name: SSHD port changing
+    - name: RHEL -> SSHD port changing
       block:
-        - name: Allow for Selinux to allow sshd to listen on tcp port {{ ssh_port }}
+        - name: RHEL -> Allow for Selinux to allow sshd to listen on tcp port {{ ssh_port }}
           seport:
             ports: '{{ ssh_port }}'
             proto: tcp
             setype: ssh_port_t
             state: present
           when: ssh_port != 22
-        - name: Allow port {{ ssh_port }} for firewalld
+        - name: RHEL -> Allow port {{ ssh_port }} for firewalld
           firewalld:
             port: '{{ ssh_port }}/tcp'
             permanent: yes
             immediate: yes
             state: enabled
           when: ssh_port != 22
-    - name: Harden sshd_config from the template
+    - name: RHEL -> Harden sshd_config from the template
       template:
         src: "files/sshd/sshd_config-{{ ansible_os_family }}{{ ansible_distribution_major_version }}.template"
         dest: /etc/ssh/sshd_config
@@ -604,40 +612,40 @@
         backup: yes
         mode: 0600
       register: sshd_change
-    - name: Restart service sshd
+    - name: RHEL -> Restart service sshd
       service:
         name: sshd
         state: restarted
       when: sshd_change.changed
-    - name: Setup ssh port fact to {{ ssh_port }}
+    - name: RHEL -> Setup ssh port fact to {{ ssh_port }}
       set_fact:
         ansible_port: "{{ ssh_port }}"
       when: ssh_port != 22
   tags: SSHD
 
-- name: Lynis recommendations
+- name: RHEL -> Lynis recommendations
   block:
-   - name: Firewire driver disabled
+   - name: RHEL -> Firewire driver disabled
      copy:
        dest: "/etc/modprobe.d/blacklist-firewire.conf"
        mode: '0644'
        content: |
           blacklist firewire-ohci
           blacklist firewire-sbp2
-   - name: CHMOD 0600 --> cron.deny
+   - name: RHEL -> CHMOD 0600 --> cron.deny
      file:
        path: /etc/cron.deny
        owner: root
        group: root
        mode: 0600
-   - name: CHMOD 0600 --> at.deny
+   - name: RHEL -> CHMOD 0600 --> at.deny
      file:
        path: /etc/at.deny
        owner: root
        group: root
        mode: 0600
      failed_when: false
-   - name: Install psacct and usbguard
+   - name: RHEL -> Install psacct and usbguard
      yum:
        name: '{{ item }}'
        state: present
@@ -645,25 +653,37 @@
        - psacct
        - usbguard
      failed_when: false
-   - name: Service psacct to be running
+   - name: RHEL -> Service psacct to be running
      service:
        name: psacct
        state: started
        enabled: yes
-   - name: DNSSEC supported (systemd-resolved) Lynis check (EL8)
+   - name: RHEL -> Ensure that  systemd-resolved is installed (RH9)
+     yum:
+       name: systemd-resolved
+       state: present
+     when:
+       - ansible_os_family == 'RedHat'
+       - ansible_distribution_major_version|int == 9
+   - name: RHEL -> DNSSEC supported (systemd-resolved) Lynis check (EL8/9)
      service:
        name: systemd-resolved
        state: started
        enabled: yes
-     when: ansible_os_family == 'RedHat' and ansible_distribution_major_version|int == 8
-   - name: CHMOD 700 --> /usr/bin/as
+     when: >
+       ansible_os_family == 'RedHat' and
+       (
+         ansible_distribution_major_version|int == 8 or
+         ansible_distribution_major_version|int == 9
+       )
+   - name: RHEL -> CHMOD 700 --> /usr/bin/as
      file:
        dest: /usr/bin/as
        mode: "0700"
        owner: root
        group: root
      failed_when: false
-   - name: Set umask rules to /etc/init.d/functions, /etc/{bashrc,csh.cshrc,profile}
+   - name: RHEL -> Set umask rules to /etc/init.d/functions, /etc/{bashrc,csh.cshrc,profile}
      replace:
        dest: "{{ item }}"
        regexp: 'umask*.[0-9][0-9][0-9]'
@@ -675,21 +695,21 @@
        - /etc/profile
        - /etc/bash.bashrc
      failed_when: false
-   - name: Add notice about umask to /etc/profile
+   - name: RHEL -> Add notice about umask to /etc/profile
      lineinfile:
        path: /etc/profile
        line: "### HARDENING: UMASK is also configured in /etc/init.d/functions, /etc/{bashrc,csh.cshrc,profile} "
        regexp: '^### HARDENING: UMASK (.*)'
-   - name: Ensure Presence of configured hostname in /etc/hosts
+   - name: RHEL -> Ensure Presence of configured hostname in /etc/hosts
      lineinfile:
        path: /etc/hosts
        line: "{{ ansible_default_ipv4.address|default(ansible_all_ipv4_addresses[0]) }}   {{ ansible_fqdn }} {{ ansible_hostname }}"
        regexp: "{{ ansible_default_ipv4.address|default(ansible_all_ipv4_addresses[0]) }}.*"
        state: present
        backup: yes
-   - name: Disable default USB devices authorization for systemd systems
+   - name: RHEL -> Disable default USB devices authorization for systemd systems
      block:
-       - name: Create script for USB devices authorization
+       - name: RHEL -> Create script for USB devices authorization
          copy:
            dest: "/usr/local/bin/USB-authorization"
            mode: '0750'
@@ -701,7 +721,7 @@
                  echo 0 > "$USB"
                done
              fi
-       - name: Create systemd for USB devices authorization
+       - name: RHEL -> Create systemd for USB devices authorization
          copy:
            dest: "/etc/systemd/system/USB-authorization.service"
            mode: '0644'
@@ -716,7 +736,7 @@
              [Install]
              WantedBy=multi-user.target
          register: usbauth
-       - name: Reload systemd daemon, enable and restart USB-authorization.service
+       - name: RHEL -> Reload systemd daemon, enable and restart USB-authorization.service
          systemd:
            name: USB-authorization.service
            state: restarted
@@ -726,9 +746,9 @@
   tags: LYNIS_RECOMMENDATIONS
 
 # Require firewalld
-- name: Firewall setup - only ping and SSH will be allowed
+- name: RHEL -> Firewall setup - only ping and SSH will be allowed
   block:
-    - name: Disable iptables and nftables
+    - name: RHEL -> Disable iptables and nftables
       service:
         name: '{{ item }}'
         state: stopped
@@ -739,42 +759,42 @@
       loop:
         - iptables
         - nftables
-    - name: Add port {{ ssh_port }} to firewalld SSH service
+    - name: RHEL -> Add port {{ ssh_port }} to firewalld SSH service
       lineinfile:
         path: "/usr/lib/firewalld/services/ssh.xml"
         line: '  <port protocol="tcp" port="{{ ssh_port }}"/> '
         insertbefore: '</service>'
       when: ssh_port != 22
-    - name: Start and enable firewalld
+    - name: RHEL -> Start and enable firewalld
       service:
         name: firewalld
         state: started
         enabled: yes
   tags: FIREWALL
 
-- name: Install AIDE
+- name: RHEL -> Install AIDE
   block:
-    - name: Install aide packages
+    - name: RHEL -> Install aide packages
       package:
         name: aide
         state: present
       register: aide_install
-    - name: Remove log file for AIDE (we will use stdout and redirection to file instead)
+    - name: RHEL -> Remove log file for AIDE (we will use stdout and redirection to file instead)
       lineinfile:
         dest: /etc/aide.conf
         state: absent
         regexp: "^report_url=file(.*)"
-    - name: Setup path for AIDE database_out file
+    - name: RHEL -> Setup path for AIDE database_out file
       lineinfile:
         dest: /etc/aide.conf
         line: database_out=file:/var/lib/aide/aide.db.new.gz
         regexp: "^database_out=.*"
-    - name: Setup path for AIDE database file
+    - name: RHEL -> Setup path for AIDE database file
       lineinfile:
         dest: /etc/aide.conf
         line: database=file:/var/lib/aide/aide.db.gz
         regexp: "^database=.*"
-    - name: Logrotate rule for AIDE
+    - name: RHEL -> Logrotate rule for AIDE
       copy:
         dest: "/etc/logrotate.d/aide"
         mode: "0644"
@@ -789,7 +809,7 @@
             notifempty
             copytruncate
           }
-    - name: Create AIDE script which will be used for crontab
+    - name: RHEL -> Create AIDE script which will be used for crontab
       copy:
         dest: "/usr/local/sbin/aide.sh"
         mode: "0700"
@@ -807,7 +827,7 @@
             rm -f /var/lib/aide/aide.db.gz
             mv /var/lib/aide/aide.db.new.gz /var/lib/aide/aide.db.gz
           fi
-    - name: Create a cron entry for AIDE (daily check and 04:50)
+    - name: RHEL -> Create a cron entry for AIDE (daily check and 04:50)
       cron:
         name: AIDE checks (hardening)
         minute: "50"
@@ -815,7 +835,7 @@
         user: root
         job: "/usr/local/sbin/aide.sh &>/dev/null"
         state: present
-    - name: Check if the Aide db exists (if exists init will be skipped)
+    - name: RHEL -> Check if the Aide db exists (if exists init will be skipped)
       stat:
         path: "/var/lib/aide/aide.db.gz"
       register: aidedb
@@ -824,30 +844,30 @@
 
 # Basicaly, this is not needed, but is OK to check audit score, from time to time
 # You can remove this from server with: rm -rf /root/lynis
-- name: Copy Lynis setup to server
+- name: RHEL -> Copy Lynis setup to server
   block:
-    - name: Extract lynis.tar.gz into /usr/local/
+    - name: RHEL -> Extract lynis.tar.gz into /usr/local/
       unarchive:
         src: files/Lynis/lynis.tar.gz
         dest: /usr/local/
       tags: LYNIS_INSTALL
-    - name: Check Lynis audit score
+    - name: RHEL -> Check Lynis audit score
       block:
-        - name: Run Lynis audit scan
+        - name: RHEL -> Run Lynis audit scan
           shell: |
             cd /usr/local/lynis
             ./lynis audit system
-        - name: Check Lynus audit score
+        - name: RHEL -> Check Lynus audit score
           shell: grep 'Hardening index' /var/log/lynis.log | cut -d " " -f 3- | grep -o '[[:digit:]]*'
           register: audit_score
-        - name: Show audit score and info (less than 85/100 is compliance fail)
+        - name: RHEL -> Show audit score and info (less than 85/100 is compliance fail)
           debug: msg='Hardening index --> {{ audit_score.stdout }}/100'
           failed_when: audit_score.stdout|int < 85
           ignore_errors: true
       tags: LYNIS_SCAN
   tags: LYNIS
 
-- name: Check will server survive the reboot, just for anycase
+- name: RHEL -> Check will server survive the reboot, just for anycase
   reboot:
     reboot_timeout: 900
     connect_timeout: 20

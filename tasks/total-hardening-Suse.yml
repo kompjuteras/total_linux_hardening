@@ -1,7 +1,7 @@
 # The most problematic part for most of the Linux admins. It will remove bash history.
-- name: Disable storage of Bash history (kill bash_history)
+- name: SLES -> Disable storage of Bash history (kill bash_history)
   block:
-    - name: Disable the storage of Bash History
+    - name: SLES -> Disable the storage of Bash History
       blockinfile:
         path: /etc/bash.bashrc
         marker: "########## {mark} Disable the storage of Bash History ##########"
@@ -9,7 +9,7 @@
         block: |
           export HISTFILESIZE=0
           unset HISTFILE
-    - name: Add small notice related to bash history in /etc/profile for confused users
+    - name: SLES -> Add small notice related to bash history in /etc/profile for confused users
       lineinfile:
         path: /etc/profile
         state: present
@@ -17,16 +17,16 @@
   when: disable_bash_history
   tags: BASH_HISTORY
 
-- name: Ensure cron is enabled
+- name: SLES -> Ensure cron is enabled
   service:
     name: cron
     enabled: yes
     state: started
   tags: CRON
 
-- name: Disable unused and dangerous filesystems
+- name: SLES -> Disable unused and dangerous filesystems
   block:
-    - name: Disable unused filesystems
+    - name: SLES -> Disable unused filesystems
       copy:
         dest: "/etc/modprobe.d/stig-items.conf"
         mode: '0644'
@@ -45,27 +45,27 @@
           install tipc /bin/true
   tags: UNUSED_FS
 
-- name: Changes to LILO, EFI and GRUB
+- name: SLES -> Changes to LILO, EFI and GRUB
   block:
-    - name: Check if the EFI directory exists
+    - name: SLES -> Check if the EFI directory exists
       stat:
         path: "/boot/efi/EFI/{{ ansible_distribution | lower }}/grub.cfg"
       register: efidir
-    - name: Set variable for grub.cfg in EFI location
+    - name: SLES -> Set variable for grub.cfg in EFI location
       set_fact:
         grub_cfg_path: "{{ efidir.stat.path }}"
       when: >
         efidir.stat.path is defined
-    - name: Check if the LILO path exists
+    - name: SLES -> Check if the LILO path exists
       stat:
         path: "/boot/grub2/grub.cfg"
       register: grubdir
-    - name: Set variable for grub.cfg in LILO location
+    - name: SLES -> Set variable for grub.cfg in LILO location
       set_fact:
         grub_cfg_path: "{{ grubdir.stat.path }}"
       when: >
         grubdir.stat.path is defined
-    - name: Set chmod 600 on grub.cfg
+    - name: SLES -> Set chmod 600 on grub.cfg
       file:
         path: "{{ item }}"
         owner: root
@@ -74,9 +74,9 @@
       loop:
         - "{{ grub_cfg_path }}"
         - /boot/grub2/grubenv
-    - name: Find if IPv6 is currently in the grub file and disable it
+    - name: SLES -> Find if IPv6 is currently in the grub file and disable it
       block:
-        - name: Find if IPv6 is currently in the grub file, shows changed when it is in the file
+        - name: SLES -> Find if IPv6 is currently in the grub file, shows changed when it is in the file
           lineinfile:
             path: /etc/default/grub
             regexp: '^\s*GRUB_CMDLINE_LINUX.*ipv6.disable=1'
@@ -85,21 +85,21 @@
           changed_when: false
           register: ipv6_disable_grub
           failed_when: false
-        - name: Disable IPv6 in grub
+        - name: SLES -> Disable IPv6 in grub
           replace:
             path: /etc/default/grub
             regexp: '^GRUB_CMDLINE_LINUX="'
             replace: 'GRUB_CMDLINE_LINUX="ipv6.disable=1 '
           when: ipv6_disable_grub.changed
-        - name: Rebuild grub
+        - name: SLES -> Rebuild grub
           command: /usr/sbin/grub2-mkconfig -o /boot/grub2/grub.cfg
           when: ipv6_disable_grub.changed
   tags: GRUB
 
 # These kernel parameters are suggested from various sources like CIS, Lynis, RHEL, SAP, etc.
-- name: Kernel Hardening
+- name: SLES -> Kernel Hardening
   block:
-    - name: Set relevant kernel parameters
+    - name: SLES -> Set relevant kernel parameters
       sysctl:
         name: "{{ item.name }}"
         value: "{{ item.value }}"
@@ -140,7 +140,7 @@
         - { name: 'net.ipv6.conf.all.accept_source_route', value: '0' }
         - { name: 'net.ipv6.conf.default.accept_redirects', value: '0' }
         - { name: 'net.ipv6.conf.default.accept_source_route', value: '0' }
-    - name: Set relevant kernel parameters (SLES 15)
+    - name: SLES -> Set relevant kernel parameters (SLES 15)
       sysctl:
         name: "{{ item.name }}"
         value: "{{ item.value }}"
@@ -151,13 +151,13 @@
         - { name: 'net.core.bpf_jit_harden', value: '2' }
         - { name: 'dev.tty.ldisc_autoload', value: '0' }
       when: ansible_os_family == 'Suse' and ansible_distribution_major_version|int == 15
-    - name: Setup kernel parameters on non-docker systems
+    - name: SLES -> Setup kernel parameters on non-docker systems
       block:
-        - name: Check is docker or podman installed
+        - name: SLES -> Check is docker or podman installed
           shell: rpm -qa | grep "docker\|podman"
           register: docker
           failed_when: false
-        - name: Setup kernel parameters on non-docker systems
+        - name: SLES -> Setup kernel parameters on non-docker systems
           sysctl:
             name: "{{ item.name }}"
             value: "{{ item.value }}"
@@ -170,15 +170,15 @@
           when: docker.stdout | length == 0
   tags: KERNEL
 
-- name: Disable display manager if graphical desktop not needed
+- name: SLES -> Disable display manager if graphical desktop not needed
   block:
-    - name: Disable display manager if graphical desktop not needed - SYSTEMD
+    - name: SLES -> Disable display manager if graphical desktop not needed - SYSTEMD
       block:
-        - name: Get default runlevel
+        - name: SLES -> Get default runlevel
           stat:
             path: /etc/systemd/system/default.target
           register: default_runlevel_out
-        - name: Disable the gdm display manager if system is not in graphical.target
+        - name: SLES -> Disable the gdm display manager if system is not in graphical.target
           systemd:
             name: gdm
             enabled: no
@@ -186,12 +186,12 @@
             state: stopped
             daemon-reload: yes
           when: default_runlevel_out.stat.lnk_target is search("graphical.target")
-        - name: Set current runlevel to multi-user.target
+        - name: SLES -> Set current runlevel to multi-user.target
           command: /usr/bin/systemctl isolate multi-user.target
           register: isolate_out
           changed_when: isolate_out.changed
           when: default_runlevel_out.stat.lnk_target is search("graphical.target")
-        - name: Det default runlevel to multi-user.target
+        - name: SLES -> Det default runlevel to multi-user.target
           file:
             src: /lib/systemd/system/multi-user.target
             dest: /etc/systemd/system/default.target
@@ -199,15 +199,15 @@
             group: root
           when: default_runlevel_out.stat.lnk_target is search("graphical.target")
 
-- name: Disable nfs-server if it's not used
+- name: SLES -> Disable nfs-server if it's not used
   block:
-    - name: Check is there some content in /etc/exports
+    - name: SLES -> Check is there some content in /etc/exports
       shell: |
         grep -v "^[[:space:]]*#\|^[[:space:]]*$" /etc/exports 2>/dev/null
       register: exports_content
       failed_when: false
       changed_when: false
-    - name: Stop and disable NFS service
+    - name: SLES -> Stop and disable NFS service
       service:
         name: nfs-server
         state: stopped
@@ -217,21 +217,21 @@
         exports_content.stdout | length == 0
 
 # No, you cannot use 12345 as a password!
-- name: Configure PAM files and password requirements
+- name: SLES -> Configure PAM files and password requirements
   block:
-    - name: Check is password policy applied
+    - name: SLES -> Check is password policy applied
       command: grep -c 'minlen=14 dcredit=-1 ucredit=-1 lcredit=-1 ocredit=-1' /etc/pam.d/common-password
       register: suse_pam
       failed_when: false
       changed_when: false
-    - name: Apply password policy (SLES 12)
+    - name: SLES -> Apply password policy (SLES 12)
       shell: |
         pam-config -a --cracklib --cracklib-minlen=14 --cracklib-lcredit=-1 --cracklib-ucredit=-1 --cracklib-dcredit=-1 \
                                  --cracklib-ocredit=-1 --pwhistory --pwhistory-use_authtok --pwhistory-remember=5
       when: >
         suse_pam.stdout|int == 0 and
         ( ansible_os_family == 'Suse' and ansible_distribution_major_version|int == 12 )
-    - name: Setup /etc/security/pwquality.conf (SLES 15)
+    - name: SLES -> Setup /etc/security/pwquality.conf (SLES 15)
       copy:
         dest: "/etc/security/pwquality.conf"
         mode: '0644'
@@ -247,7 +247,7 @@
           maxclassrepeat = 0
       when: ansible_os_family == 'Suse' and ansible_distribution_major_version|int == 15
 
-- name: Configure PAM files and password requirements (common-password)
+- name: SLES -> Configure PAM files and password requirements (common-password)
   copy:
     dest: /etc/pam.d/common-password
     mode: "0644"
@@ -260,47 +260,47 @@
        password required      pam_pwcheck.so   remember=5
        password sufficient    pam_unix.so      use_authtok
 
-- name: Umasks and login.defs setup
+- name: SLES -> Umasks and login.defs setup
   block:
-    - name: Lock default services accounts. Needs to be done before setup login.defs
+    - name: SLES -> Lock default services accounts. Needs to be done before setup login.defs
       block:
-        - name: Get system users for which password will be changed to random UID>0 and <UID_MIN
+        - name: SLES -> Get system users for which password will be changed to random UID>0 and <UID_MIN
           shell: |
             SYS_UID_MIN="$(awk '/^UID_MIN/ {print $2}' /etc/login.defs)"
             awk -v a="${SYS_UID_MIN}" -F:   '$3<a {print $1}' /etc/passwd | grep -v "root" | xargs
           register: sysusers
           changed_when: false
-        - name: Report for which users password will be changed
+        - name: SLES -> Report for which users password will be changed
           debug: msg="{{ sysusers.stdout }}"
           when: sysusers.stdout | length > 0
           changed_when: true
-        - name: Set some random password (lock) to all fetched system users
+        - name: SLES -> Set some random password (lock) to all fetched system users
           shell: |
             for i in {{ sysusers.stdout }} ; do
               echo "passwd -l ${i}" >> /tmp/provera1
               passwd -l ${i}
             done
-        - name: Get all system users (UID>0 and <UID_MIN) except shutdown with access to shell
+        - name: SLES -> Get all system users (UID>0 and <UID_MIN) except shutdown with access to shell
           shell: |
             SYS_UID_MIN="$(awk '/^UID_MIN/ {print $2}' /etc/login.defs)"
             cat /etc/passwd | grep -v "nologin$\|false$\|^root\|sync\|shutdown\|halt" | awk -v a="${SYS_UID_MIN}" -F: '$3<$a {print $1}'
           register: sys_wo_nologin
           failed_when: false
           changed_when: false
-        - name: Report to user account for which we will set shell to /bin/false
+        - name: SLES -> Report to user account for which we will set shell to /bin/false
           debug: msg="Shell will be removed for --> {{ sys_wo_nologin.stdout }}"
           when: sys_wo_nologin.stdout | length > 0
-        - name: Set /bin/false as a default shell for catched system users
+        - name: SLES -> Set /bin/false as a default shell for catched system users
           shell: |
             for i in {{ sys_wo_nologin.stdout }} ; do
               echo "chsh -s /bin/false ${i}" >> /tmp/provera2
               chsh -s /bin/false ${i}
             done
           when: sys_wo_nologin.stdout | length > 0
-        - name: Report to user account there is no sysaccount without /bin/false
+        - name: SLES -> Report to user account there is no sysaccount without /bin/false
           debug: msg="Noone of system users have access to shell"
           when: sys_wo_nologin.stdout | length == 0
-        - name: Setup login.defs file
+        - name: SLES -> Setup login.defs file
           copy:
             dest: "/etc/login.defs"
             mode: '0644'
@@ -351,15 +351,15 @@
               SHA_CRYPT_MIN_ROUNDS  6001
               SHA_CRYPT_MAX_ROUNDS  15000
 
-- name: Setup CRYPT=sha512 and CRYPT_FILES=sha512 in /etc/default/passwd (SLES 12)
+- name: SLES -> Setup CRYPT=sha512 and CRYPT_FILES=sha512 in /etc/default/passwd (SLES 12)
   block:
-    - name: Setup CRYPT=sha512 in /etc/default/passwd (SLES 12)
+    - name: SLES -> Setup CRYPT=sha512 in /etc/default/passwd (SLES 12)
       lineinfile:
         path: /etc/default/passwd
         regexp: '^CRYPT='
         line: 'CRYPT=sha512'
         backup: yes
-    - name: Setup CRYPT_FILES=sha512 in /etc/default/passwd (SLES 12)
+    - name: SLES -> Setup CRYPT_FILES=sha512 in /etc/default/passwd (SLES 12)
       lineinfile:
         path: /etc/default/passwd
         regexp: '^CRYPT_FILES='
@@ -367,44 +367,44 @@
         backup: yes
   when: ansible_os_family == 'Suse' and ansible_distribution_major_version|int == 12
 
-- name: The operating system must disable account identifiers (individuals, groups, roles, and devices) if the password expires.
+- name: SLES -> The operating system must disable account identifiers (individuals, groups, roles, and devices) if the password expires.
   block:
-    - name: Setup INACTIVE=30 in /etc/default/useradd
+    - name: SLES -> Setup INACTIVE=30 in /etc/default/useradd
       lineinfile:
         path: /etc/default/useradd
         regexp: '(.*)INACTIVE(.*)(?!30)'
         line: INACTIVE=30
-    - name: Find users with hashed password and setup their inactivity period to 30 days
+    - name: SLES -> Find users with hashed password and setup their inactivity period to 30 days
       shell: |
         egrep ^[^:]+:[^\!*] /etc/shadow | grep -v "root"  | awk -F":" '$7 != 30 {print $1}' | xargs
       register: inactive_users_set
       changed_when: false
-    - name: Report to user accounts for which we will set inactivity period
+    - name: SLES -> Report to user accounts for which we will set inactivity period
       debug: msg="{{ inactive_users_set.stdout_lines }}"
       when: inactive_users_set.stdout | length > 0
       changed_when: true
-    - name: Change their password inactivity period to 30 days
+    - name: SLES -> Change their password inactivity period to 30 days
       shell: |
         for i in {{ inactive_users_set.stdout }} ; do
           chage --inactive 30 ${i}
         done
       when: inactive_users_set.stdout | length > 0
 
-- name: Ensure core limits are set and dumps are disabled
+- name: SLES -> Ensure core limits are set and dumps are disabled
   block:
-    - name: Ensure core soft limits are set
+    - name: SLES -> Ensure core soft limits are set
       pam_limits:
         dest: /etc/security/limits.conf
         domain: "*"
         limit_type: hard
         limit_item: maxlogins
         value: "10"
-    - name: Disable core dumps in /etc/profile
+    - name: SLES -> Disable core dumps in /etc/profile
       lineinfile:
         dest: /etc/profile
         regexp: "^ulimit.*-c.*!0"
         line: "ulimit -c 0"
-    - name: Disable core dumps in /etc/systemd/coredump.conf
+    - name: SLES -> Disable core dumps in /etc/systemd/coredump.conf
       lineinfile:
         dest: /etc/systemd/coredump.conf
         regexp: "{{ item.regexp }}"
@@ -412,33 +412,33 @@
       with_items:
         - { regexp: '.*ProcessSizeMax=.*', line: 'ProcessSizeMax=0' }
         - { regexp: '.*Storage=.*', line: 'Storage=none' }
-    - name: Ensure core dumps are restricted
+    - name: SLES -> Ensure core dumps are restricted
       block:
-        - name: Ensure core dumps are restricted fs.suid_dumpable=0
+        - name: SLES -> Ensure core dumps are restricted fs.suid_dumpable=0
           sysctl:
             name: fs.suid_dumpable
             value: "0"
             state: present
             reload: yes
-        - name: Ensure hard limit unlimited is disabled
+        - name: SLES -> Ensure hard limit unlimited is disabled
           lineinfile:
             dest: /etc/security/limits.conf
             state: absent
             regexp: "^[*].*hard.*core.*unlimited.*"
-        - name: Ensure soft limit unlimited is disabled
+        - name: SLES -> Ensure soft limit unlimited is disabled
           lineinfile:
             path: /etc/security/limits.conf
             regexp: "^[*].*soft.*core.*unlimited.*"
             state: absent
             backup: yes
-        - name: Ensure core hard limits are set
+        - name: SLES -> Ensure core hard limits are set
           pam_limits:
             dest: /etc/security/limits.conf
             domain: "*"
             limit_type: hard
             limit_item: core
             value: "0"
-        - name: Ensure core soft limits are set
+        - name: SLES -> Ensure core soft limits are set
           pam_limits:
             dest: /etc/security/limits.conf
             domain: "*"
@@ -446,22 +446,22 @@
             limit_item: core
             value: "0"
 
-- name: Audit log files on a regular basis
+- name: SLES -> Audit log files on a regular basis
   block:
     ############################################################################
-    - name: CHMOD 0640 --> Get list of candidate files
+    - name: SLES -> CHMOD 0640 --> Get list of candidate files
       shell: |
         find /var/log -type f \( -regex "/var/log/\(boot.log\|messages\|\
         syslog.*\|syslog\|auth.log\|secure\|dmesg\|kern.log\|faillog\|cron\|\
         yum.log\|mail.*\|httpd\|mysql.*\|apache.* \)" -perm /0137 \)
       register: candidates_0640
       changed_when: false
-    - name: CHMOD 0640 --> Report candidate files to user
+    - name: SLES -> CHMOD 0640 --> Report candidate files to user
       debug:
         msg: "Candidate(s) for chmod 0640 --> {{ candidates_0640.stdout_lines }}"
       when: candidates_0640.stdout | length > 0
       changed_when: candidates_0640.stdout | length > 0
-    - name: CHMOD 0640 --> Applying new mode to candidate files
+    - name: SLES -> CHMOD 0640 --> Applying new mode to candidate files
       shell: |
         find /var/log -type f \( -regex "/var/log/\(boot.log\|messages\|\
         syslog.*\|syslog\|auth.log\|secure\|dmesg\|kern.log\|faillog\|cron\|\
@@ -470,18 +470,18 @@
       when: candidates_0640.stdout | length > 0
       changed_when: candidates_0640.stdout | length > 0
     ############################################################################
-    - name: CHMOD 0660 --> Get list of candidate files
+    - name: SLES -> CHMOD 0660 --> Get list of candidate files
       shell: |
         find /var/log -type f \( -regex "/var/log/\(pacemaker.log\|\
         pacemaker.log-*\|nsclient.log\)" -perm /0117 \)
       register: candidates_0660
       changed_when: false
-    - name: CHMOD 0660 --> Report candidate files to user
+    - name: SLES -> CHMOD 0660 --> Report candidate files to user
       debug:
         msg: "Candidate(s) for chmod 0660 --> {{ candidates_0660.stdout_lines }}"
       when: candidates_0660.stdout | length > 0
       changed_when: candidates_0660.stdout | length > 0
-    - name: CHMOD 0660 --> Applying new mode to candidate files
+    - name: SLES -> CHMOD 0660 --> Applying new mode to candidate files
       shell: |
         find /var/log -type f \( -regex "/var/log/\(pacemaker.log\|\
         pacemaker.log-*\|nsclient.log\)" -perm /0117 \) \
@@ -489,44 +489,44 @@
       when: candidates_0660.stdout | length > 0
       changed_when: candidates_0660.stdout | length > 0
     ############################################################################
-    - name: CHMOD 0733 --> Get list of candidate files
+    - name: SLES -> CHMOD 0733 --> Get list of candidate files
       shell: |
         find /var/log -type f \( -regex "/var/log/\(sudosh\)" -perm /0044 \)
       register: candidates_0733
       changed_when: false
-    - name: CHMOD 0733 --> Report candidate files to user
+    - name: SLES -> CHMOD 0733 --> Report candidate files to user
       debug:
         msg: "Candidate(s) for chmod 0733 --> {{ candidates_0733.stdout_lines }}"
       when: candidates_0733.stdout | length > 0
       changed_when: candidates_0733.stdout | length > 0
-    - name: CHMOD 0733 --> Applying new mode to candidate files
+    - name: SLES -> CHMOD 0733 --> Applying new mode to candidate files
       shell: |
         find /var/log -type f \( -regex "/var/log/\(sudosh\)" -perm /0044 \) \
         -exec chmod 0733 {} \;
       when: candidates_0733.stdout | length > 0
       changed_when: candidates_0733.stdout | length > 0
     ############################################################################
-    - name: CHMOD 0664 --> Get list of candidate files
+    - name: SLES -> CHMOD 0664 --> Get list of candidate files
       shell: |
         find /var/log -type f \( -regex "/var/log/\(wtmp\)" -perm /0113 \)
       register: candidates_0664
       changed_when: false
-    - name: CHMOD 0664 --> Report candidate files to user
+    - name: SLES -> CHMOD 0664 --> Report candidate files to user
       debug:
         msg: "Candidate(s) for chmod 0664 --> {{ candidates_0664.stdout_lines }}"
       when: candidates_0664.stdout | length > 0
       changed_when: candidates_0664.stdout | length > 0
-    - name: CHMOD 0664 --> Applying new mode to candidate files
+    - name: SLES -> CHMOD 0664 --> Applying new mode to candidate files
       shell: |
         find /var/log -type f \( -regex "/var/log/\(wtmp\)" -perm /0113 \) \
         -exec chmod 0664 {} \;
       when: candidates_0664.stdout | length > 0
       changed_when: candidates_0664.stdout | length > 0
 
-- name: Change default SSH port if asked
+- name: SLES -> Change default SSH port if asked
   block:
       # Bug with Ansible firewalld module on SLES so we need to do it by using shell
-    - name: Allow port {{ ssh_port }} for firewalld (SLES15)
+    - name: SLES -> Allow port {{ ssh_port }} for firewalld (SLES15)
       shell: |
         if systemctl status firewalld &>/dev/null; then
            firewall-cmd --add-port={{ ssh_port }}/tcp --permanent
@@ -534,38 +534,38 @@
         fi
       register: firewalld_command
       failed_when: false
-      when: 
+      when:
         - ssh_port != 22
-        - ansible_os_family == 'Suse' 
+        - ansible_os_family == 'Suse'
         - ansible_distribution_major_version|int == 15
       changed_when: firewalld_command.stdout == "success\nsuccess"
       tags: FIREWALLD
-    - name: Setup firewall in SLES12
+    - name: SLES -> Setup firewall in SLES12
       block:
-        - name: Check is SuSEfirewall2 service is running
+        - name: SLES -> Check is SuSEfirewall2 service is running
           systemd:
             state: stopped
             name: SuSEfirewall2
           check_mode: yes
           failed_when: false
           register: SLES12FW_RUNNING
-        - name: Allow port {{ ssh_port }} for SuSEfirewall2 (SLES12)
+        - name: SLES -> Allow port {{ ssh_port }} for SuSEfirewall2 (SLES12)
           lineinfile:
             path: /etc/sysconfig/SuSEfirewall2
             regexp: '^FW_SERVICES_EXT_TCP'
             line: FW_SERVICES_EXT_TCP="{{ ssh_port }}"
           register: SLES12FW
           when: SLES12FW_RUNNING.changed
-        - name: Restart service SuSEfirewall2_setup
+        - name: SLES -> Restart service SuSEfirewall2_setup
           service:
             name: SuSEfirewall2_setup
             state: restarted
           when: SLES12FW.changed
       when:
         - ssh_port != 22
-        - ansible_os_family == 'Suse' 
+        - ansible_os_family == 'Suse'
         - ansible_distribution_major_version|int == 12
-    - name: Harden sshd_config from the template
+    - name: SLES -> Harden sshd_config from the template
       template:
         src: "files/sshd/sshd_config-{{ ansible_os_family }}{{ ansible_distribution_major_version }}.template"
         dest: /etc/ssh/sshd_config
@@ -574,57 +574,57 @@
         backup: yes
         mode: 0600
       register: sshd_change
-    - name: Restart service sshd
+    - name: SLES -> Restart service sshd
       service:
         name: sshd
         state: restarted
       when: sshd_change.changed
-    - name: Setup ssh port fact to {{ ssh_port }}
+    - name: SLES -> Setup ssh port fact to {{ ssh_port }}
       set_fact:
         ansible_port: "{{ ssh_port }}"
       when: ssh_port != 22
   tags: SSHD
 
-- name: Lynis recommendations
+- name: SLES -> Lynis recommendations
   block:
-   - name: Firewire driver disabled
+   - name: SLES -> Firewire driver disabled
      copy:
        dest: "/etc/modprobe.d/blacklist-firewire.conf"
        mode: '0644'
        content: |
           blacklist firewire-ohci
           blacklist firewire-sbp2
-   - name: CHMOD 0600 --> cron.deny
+   - name: SLES -> CHMOD 0600 --> cron.deny
      file:
        path: /etc/cron.deny
        owner: root
        group: root
        mode: 0600
-   - name: CHMOD 0600 --> at.deny
+   - name: SLES -> CHMOD 0600 --> at.deny
      file:
        path: /etc/at.deny
        owner: root
        group: root
        mode: 0600
      failed_when: false
-   - name: Install acct
+   - name: SLES -> Install acct
      zypper:
        name: acct
        state: present
      failed_when: false
-   - name: Service acct to be running
+   - name: SLES -> Service acct to be running
      service:
        name: acct
        state: started
        enabled: yes
-   - name: CHMOD 700 --> /usr/bin/as
+   - name: SLES -> CHMOD 700 --> /usr/bin/as
      file:
        dest: /usr/bin/as
        mode: "0700"
        owner: root
        group: root
      failed_when: false
-   - name: Set umask rules to /etc/init.d/functions, /etc/{bashrc,csh.cshrc,profile}
+   - name: SLES -> Set umask rules to /etc/init.d/functions, /etc/{bashrc,csh.cshrc,profile}
      lineinfile:
        dest: "{{ item }}"
        regexp: 'umask*.[0-9][0-9][0-9]'
@@ -634,21 +634,21 @@
        - /etc/csh.cshrc
        - /etc/profile
      failed_when: false
-   - name: Add notice about umask to /etc/profile
+   - name: SLES -> Add notice about umask to /etc/profile
      lineinfile:
        path: /etc/profile
        line: "### HARDENING: UMASK is also configured in /etc/init.d/functions, /etc/{bashrc,csh.cshrc,profile} "
        regexp: '^### HARDENING: UMASK (.*)'
-   - name: Ensure Presence of configured hostname in /etc/hosts
+   - name: SLES -> Ensure Presence of configured hostname in /etc/hosts
      lineinfile:
        path: /etc/hosts
        line: "{{ ansible_default_ipv4.address|default(ansible_all_ipv4_addresses[0]) }}   {{ ansible_fqdn }} {{ ansible_hostname }}"
        regexp: "{{ ansible_default_ipv4.address|default(ansible_all_ipv4_addresses[0]) }}.*"
        state: present
        backup: yes
-   - name: Disable default USB devices authorization for systemd systems
+   - name: SLES -> Disable default USB devices authorization for systemd systems
      block:
-       - name: Create script for USB devices authorization
+       - name: SLES -> Create script for USB devices authorization
          copy:
            dest: "/usr/local/bin/USB-authorization"
            mode: '0750'
@@ -660,7 +660,7 @@
                  echo 0 > "$USB"
                done
              fi
-       - name: Create systemd for USB devices authorization
+       - name: SLES -> Create systemd for USB devices authorization
          copy:
            dest: "/etc/systemd/system/USB-authorization.service"
            mode: '0644'
@@ -675,7 +675,7 @@
              [Install]
              WantedBy=multi-user.target
          register: usbauth
-       - name: Reload systemd daemon, enable and restart USB-authorization.service
+       - name: SLES -> Reload systemd daemon, enable and restart USB-authorization.service
          systemd:
            name: USB-authorization.service
            state: restarted
@@ -683,23 +683,23 @@
            daemon_reload: yes
          when: usbauth.changed
 
-- name: SLES specific password settings
+- name: SLES -> SLES specific password settings
   block:
-    - name: Determine if we are currently using sha512 password
+    - name: SLES -> Determine if we are currently using sha512 password
       shell: grep 'pam_unix.so.*sha512' /etc/pam.d/common-password
       changed_when: false
       register: sha512_exist
       failed_when: false
-    - name: Determine if we are currently using sha512 password and setup if not
+    - name: SLES -> Determine if we are currently using sha512 password and setup if not
       replace:
         dest: /etc/pam.d/common-password
         regexp: 'pam_unix.so'
         replace: 'pam_unix.so    sha512'
       when: sha512_exist.stdout | length == 0
 
-- name: Firewall setup - only ping and SSH will be allowed (SLES 12)
+- name: SLES -> Firewall setup - only ping and SSH will be allowed (SLES 12)
   block:
-    - name: Allow sshd service on firewall config (SLES 12)
+    - name: SLES -> Allow sshd service on firewall config (SLES 12)
       lineinfile:
         path: /etc/sysconfig/SuSEfirewall2
         regexp: '{{ item.regexp }}'
@@ -709,13 +709,13 @@
       with_items:
         - { regexp: '^FW_CONFIGURATIONS_EXT=.*', line: 'FW_CONFIGURATIONS_EXT="sshd"' }
         - { regexp: '^FW_SERVICES_EXT_TCP=.*', line: 'FW_SERVICES_EXT_TCP="{{ ssh_port }}"' }
-    - name: Start and enable SuSEfirewall2 (SLES 12)
+    - name: SLES -> Start and enable SuSEfirewall2 (SLES 12)
       service:
         name: 'SuSEfirewall2'
         state: restarted
         enabled: yes
       when: SuSEfirewall2_config.changed
-    - name: Start and enable SuSEfirewall2 (SLES 12)
+    - name: SLES -> Start and enable SuSEfirewall2 (SLES 12)
       service:
         name: 'SuSEfirewall2'
         state: restarted
@@ -724,15 +724,15 @@
   when: ansible_os_family == 'Suse' and ansible_distribution_major_version|int == 12
   tags: FIREWALL
 
-- name: Firewall setup - only ping and SSH will be allowed (SLES 15)
+- name: SLES -> Firewall setup - only ping and SSH will be allowed (SLES 15)
   block:
-    - name: Install and setup firewalld (SLES 15)
+    - name: SLES -> Install and setup firewalld (SLES 15)
       block:
-        - name: Install firewalld (will allow only ssh)
+        - name: SLES -> Install firewalld (will allow only ssh)
           zypper:
             name: firewalld
             state: present
-        - name: Disable iptables and nftables (SLES 15)
+        - name: SLES -> Disable iptables and nftables (SLES 15)
           service:
             name: '{{ item }}'
             state: stopped
@@ -743,24 +743,24 @@
           loop:
             - iptables
             - nftables
-        - name: Relink Python on SUSE15 from 2.7 to 3.6 (bug related to SLES 15)
+        - name: SLES -> Relink Python on SUSE15 from 2.7 to 3.6 (bug related to SLES 15)
           file:
             path: /usr/bin/python
             src: /usr/bin/python3.6
             state: link
             force: yes
-        - name: Add port {{ ssh_port }} to firewalld SSH service (SLES 15)
+        - name: SLES -> Add port {{ ssh_port }} to firewalld SSH service (SLES 15)
           lineinfile:
             path: "/usr/lib/firewalld/services/ssh.xml"
             line: '  <port protocol="tcp" port="{{ ssh_port }}"/> '
             insertbefore: '</service>'
           when: ssh_port != 22
-        - name: Start and enable firewalld (SLES 15)
+        - name: SLES -> Start and enable firewalld (SLES 15)
           service:
             name: firewalld
             state: started
             enabled: yes
-        - name: Revert link Python on SUSE15 from 3.6 to 2.7 (bug related to SLES 15)
+        - name: SLES -> Revert link Python on SUSE15 from 3.6 to 2.7 (bug related to SLES 15)
           file:
             path: /usr/bin/python
             src: /usr/bin/python2.7
@@ -769,29 +769,29 @@
   when: ansible_os_family == 'Suse' and ansible_distribution_major_version|int == 15
   tags: FIREWALL
 
-- name: Install AIDE
+- name: SLES -> Install AIDE
   block:
-    - name: Install aide packages
+    - name: SLES -> Install aide packages
       package:
         name: aide
         state: present
       register: aide_install
-    - name: Remove log file for AIDE (we will use stdout and redirection to file instead)
+    - name: SLES -> Remove log file for AIDE (we will use stdout and redirection to file instead)
       lineinfile:
         dest: /etc/aide.conf
         state: absent
         regexp: "^report_url=file(.*)"
-    - name: Setup path for AIDE database_out file
+    - name: SLES -> Setup path for AIDE database_out file
       lineinfile:
         dest: /etc/aide.conf
         line: database_out=file:/var/lib/aide/aide.db.new.gz
         regexp: "^database_out=.*"
-    - name: Setup path for AIDE database file
+    - name: SLES -> Setup path for AIDE database file
       lineinfile:
         dest: /etc/aide.conf
         line: database=file:/var/lib/aide/aide.db.gz
         regexp: "^database=.*"
-    - name: Logrotate rule for AIDE
+    - name: SLES -> Logrotate rule for AIDE
       copy:
         dest: "/etc/logrotate.d/aide"
         mode: "0644"
@@ -806,7 +806,7 @@
             notifempty
             copytruncate
           }
-    - name: Create AIDE script which will be used for crontab
+    - name: SLES -> Create AIDE script which will be used for crontab
       copy:
         dest: "/usr/local/sbin/aide.sh"
         mode: "0700"
@@ -824,7 +824,7 @@
             rm -f /var/lib/aide/aide.db.gz
             mv /var/lib/aide/aide.db.new.gz /var/lib/aide/aide.db.gz
           fi
-    - name: Create a cron entry for AIDE (daily check at 04:50)
+    - name: SLES -> Create a cron entry for AIDE (daily check at 04:50)
       cron:
         name: AIDE checks (hardening)
         minute: "50"
@@ -832,7 +832,7 @@
         user: root
         job: "/usr/local/sbin/aide.sh &>/dev/null"
         state: present
-    - name: Check if the Aide db exists (if exists init will be skipped)
+    - name: SLES -> Check if the Aide db exists (if exists init will be skipped)
       stat:
         path: "/var/lib/aide/aide.db.gz"
       register: aidedb
@@ -841,31 +841,31 @@
 
 # Basicaly, this is not needed, but is OK to check audit score, from time to time
 # You can remove this from server with: rm -rf /usr/local
-- name: Copy Lynis setup to server
+- name: SLES -> Copy Lynis setup to server
   block:
-    - name: Extract lynis.tar.gz into /usr/local/
+    - name: SLES -> Extract lynis.tar.gz into /usr/local/
       unarchive:
         src: files/Lynis/lynis.tar.gz
         dest: /usr/local
-    - name: Check Lynis audit score
+    - name: SLES -> Check Lynis audit score
       block:
-        - name: Run Lynis audit scan
+        - name: SLES -> Run Lynis audit scan
           shell: |
             cd /usr/local/lynis
             ./lynis audit system
           changed_when: false
-        - name: Check Lynus audit score
+        - name: SLES -> Check Lynus audit score
           shell: grep 'Hardening index' /var/log/lynis.log | cut -d " " -f 3- | grep -o '[[:digit:]]*'
           register: audit_score
           changed_when: false
-        - name: Show audit score and info (less than 85/100 is compliance fail)
+        - name: SLES -> Show audit score and info (less than 85/100 is compliance fail)
           debug: msg='Hardening index --> {{ audit_score.stdout }}/100'
           failed_when: audit_score.stdout|int < 85
           ignore_errors: true
       tags: LYNIS_SCAN
   tags: LYNIS
 
-- name: Check will server survive the reboot, just for anycase
+- name: SLES -> Check will server survive the reboot, just for anycase
   reboot:
     reboot_timeout: 900
     connect_timeout: 20
