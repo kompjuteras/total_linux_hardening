@@ -1,7 +1,9 @@
 total-linux-hardening
 =========
 
-Ansible role for the Linux hardening enterprise systems. Currently, supported systems are:
+Very resticive ansible role for the Linux hardening enterprise systems by many standards (CIS/Lynis/Red Hat/etc.), so please don't use it on already running machines. Role was planned to be used on newly created systems which will be in use after this hardening, not before.
+
+Currently, supported systems are:
 - CentOS 7, 8, 9
 - Red Hat 7, 8, 9
 - SLES_SAP (SLES) 12, 15
