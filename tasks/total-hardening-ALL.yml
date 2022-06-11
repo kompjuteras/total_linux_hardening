@@ -1,27 +1,3 @@
-- name: ALL -> Report
-  debug:
-    msg: "Please run this playbook as a sudo user, and not as a root. Root login will be disabled by this hardening."
-  when: ansible_user == "root"
-  failed_when: true
-
-- name: ALL -> Report
-  debug:
-    msg: "{{ ansible_distribution }} {{ ansible_distribution_version }} is not supported"
-  when:
-     - not ( ansible_distribution == 'RedHat'   and ( ansible_distribution_major_version == '7'  ))
-     - not ( ansible_distribution == 'RedHat'   and ( ansible_distribution_major_version == '8'  ))
-     - not ( ansible_distribution == 'RedHat'   and ( ansible_distribution_major_version == '9'  ))
-     - not ( ansible_distribution == 'CentOS'   and ( ansible_distribution_major_version == '7'  ))
-     - not ( ansible_distribution == 'CentOS'   and ( ansible_distribution_major_version == '8'  ))
-     - not ( ansible_distribution == 'CentOS'   and ( ansible_distribution_major_version == '9'  ))
-     - not ( ansible_distribution == 'SLES_SAP' and ( ansible_distribution_major_version == '12' ))
-     - not ( ansible_distribution == 'SLES_SAP' and ( ansible_distribution_major_version == '15' ))
-     - not ( ansible_distribution == 'Suse'     and ( ansible_distribution_major_version == '12' ))
-     - not ( ansible_distribution == 'Suse'     and ( ansible_distribution_major_version == '15' ))
-  failed_when: true
-  ignore_errors: false
-  tags: SUPPORTED_OS
-
 # Required by zypper plugin
 - name: ALL -> Check packages required by Ansible on SLES machines
   block:
@@ -1001,15 +977,15 @@
         - { regexp: "^.*smtpd_banner = ", line: "smtpd_banner = $myhostname ESMTP" }
         - { regexp: "^.*inet_protocols = ", line: "inet_protocols = ipv4" }
       when: postfix_out.stat.exists
-      register: maincf
+      register: main_cf
     - name: ALL -> Restart service postfix if main.cf is changed
       service:
         name: postfix
         state: restarted
-      when: maincf.changed
+      when: main_cf.changed
     - name: ALL -> Test postfix config
       command: postconf > /dev/null
-      when: maincf.changed
+      when: main_cf.changed
       changed_when: false
   when: not system_is_mailserver
 
@@ -1511,7 +1487,7 @@
     - name: ALL -> Set GDM to use banner message
       blockinfile:
         path: /etc/dconf/db/gdm.d/01-banner-message
-        owern: root
+        owner: root
         group: root
         mode: 0644
         block: |

@@ -50,21 +50,21 @@
     - name: SLES -> Check if the EFI directory exists
       stat:
         path: "/boot/efi/EFI/{{ ansible_distribution | lower }}/grub.cfg"
-      register: efidir
+      register: efi_dir
     - name: SLES -> Set variable for grub.cfg in EFI location
       set_fact:
-        grub_cfg_path: "{{ efidir.stat.path }}"
+        grub_cfg_path: "{{ efi_dir.stat.path }}"
       when: >
-        efidir.stat.path is defined
+        efi_dir.stat.path is defined
     - name: SLES -> Check if the LILO path exists
       stat:
         path: "/boot/grub2/grub.cfg"
-      register: grubdir
+      register: grub_dir
     - name: SLES -> Set variable for grub.cfg in LILO location
       set_fact:
-        grub_cfg_path: "{{ grubdir.stat.path }}"
+        grub_cfg_path: "{{ grub_dir.stat.path }}"
       when: >
-        grubdir.stat.path is defined
+        grub_dir.stat.path is defined
     - name: SLES -> Set chmod 600 on grub.cfg
       file:
         path: "{{ item }}"
@@ -268,15 +268,15 @@
           shell: |
             SYS_UID_MIN="$(awk '/^UID_MIN/ {print $2}' /etc/login.defs)"
             awk -v a="${SYS_UID_MIN}" -F:   '$3<a {print $1}' /etc/passwd | grep -v "root" | xargs
-          register: sysusers
+          register: sys_users
           changed_when: false
         - name: SLES -> Report for which users password will be changed
-          debug: msg="{{ sysusers.stdout }}"
-          when: sysusers.stdout | length > 0
+          debug: msg="{{ sys_users.stdout }}"
+          when: sys_users.stdout | length > 0
           changed_when: true
         - name: SLES -> Set some random password (lock) to all fetched system users
           shell: |
-            for i in {{ sysusers.stdout }} ; do
+            for i in {{ sys_users.stdout }} ; do
               echo "passwd -l ${i}" >> /tmp/provera1
               passwd -l ${i}
             done
@@ -290,15 +290,15 @@
         - name: SLES -> Report to user account for which we will set shell to /bin/false
           debug: msg="Shell will be removed for --> {{ sys_wo_nologin.stdout }}"
           when: sys_wo_nologin.stdout | length > 0
-        - name: SLES -> Set /bin/false as a default shell for catched system users
+        - name: SLES -> Set /bin/false as a default shell for fetched system users
           shell: |
             for i in {{ sys_wo_nologin.stdout }} ; do
               echo "chsh -s /bin/false ${i}" >> /tmp/provera2
               chsh -s /bin/false ${i}
             done
           when: sys_wo_nologin.stdout | length > 0
-        - name: SLES -> Report to user account there is no sysaccount without /bin/false
-          debug: msg="Noone of system users have access to shell"
+        - name: SLES -> Report to user account there is no sys-account without /bin/false
+          debug: msg="None of system users have access to shell"
           when: sys_wo_nologin.stdout | length == 0
         - name: SLES -> Setup login.defs file
           copy:
@@ -579,9 +579,10 @@
         name: sshd
         state: restarted
       when: sshd_change.changed
+      failed_when: false
     - name: SLES -> Setup ssh port fact to {{ ssh_port }}
       set_fact:
-        ansible_port: "{{ ssh_port }}"
+        ansible_ssh_port: "{{ ssh_port }}"
       when: ssh_port != 22
   tags: SSHD
 
@@ -674,14 +675,14 @@
 
              [Install]
              WantedBy=multi-user.target
-         register: usbauth
+         register: usb_auth
        - name: SLES -> Reload systemd daemon, enable and restart USB-authorization.service
          systemd:
            name: USB-authorization.service
            state: restarted
            enabled: yes
            daemon_reload: yes
-         when: usbauth.changed
+         when: usb_auth.changed
 
 - name: SLES -> SLES specific password settings
   block:
@@ -839,7 +840,7 @@
   when: install_aide
   tags: AIDE
 
-# Basicaly, this is not needed, but is OK to check audit score, from time to time
+# Basically, this is not needed, but is OK to check audit score, from time to time
 # You can remove this from server with: rm -rf /usr/local
 - name: SLES -> Copy Lynis setup to server
   block:
@@ -854,7 +855,7 @@
             cd /usr/local/lynis
             ./lynis audit system
           changed_when: false
-        - name: SLES -> Check Lynus audit score
+        - name: SLES -> Check Lynis audit score
           shell: grep 'Hardening index' /var/log/lynis.log | cut -d " " -f 3- | grep -o '[[:digit:]]*'
           register: audit_score
           changed_when: false
@@ -865,7 +866,7 @@
       tags: LYNIS_SCAN
   tags: LYNIS
 
-- name: SLES -> Check will server survive the reboot, just for anycase
+- name: SLES -> Check will server survive the reboot, just for any case
   reboot:
     reboot_timeout: 900
     connect_timeout: 20

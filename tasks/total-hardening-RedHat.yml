@@ -1,7 +1,7 @@
 # The most problematic part for most of the Linux admins. It will remove bash history.
 - name: RHEL -> Disable storage of Bash history (kill bash_history)
   block:
-    - name: RHEL -> RDisable the storage of Bash History
+    - name: RHEL -> Disable the storage of Bash History
       blockinfile:
         path: /etc/bashrc
         marker: "########## {mark} Disable the storage of Bash History ##########"
@@ -40,20 +40,15 @@
           - libselinux-python
           - policycoreutils-python
         state: present
-      when:
-        - ansible_os_family == 'RedHat'
-        - ansible_distribution_major_version|int == 7
+      when: ( ansible_os_family == 'RedHat' and ( ansible_distribution_major_version == '7' ))
     - name: RHEL -> Install some common packages (EL8/9)
       yum:
         name:
           - python3-policycoreutils
         state: present
       when: >
-        ansible_os_family == 'RedHat' and
-        (
-          ansible_distribution_major_version|int == 8 or
-          ansible_distribution_major_version|int == 9
-        )
+       ( ansible_os_family == 'RedHat' and ( ansible_distribution_major_version == '8' )) or
+       ( ansible_os_family == 'RedHat' and ( ansible_distribution_major_version == '9' ))
   tags:
     - COMMON_PACKAGES
     - SSHD
@@ -211,22 +206,22 @@
         paths: "/boot/efi/EFI"
         pattern: grub.cfg
         recurse: true
-      register: efidir
-    - debug: msg="{{ efidir.files[0].path }}"
+      register: efi_dir
+    - debug: msg="{{ efi_dir.files[0].path }}"
       when: >
-        efidir.files
+        efi_dir.files
     - name: RHEL -> Set variable for grub.cfg in EFI location
       set_fact:
-        grub_cfg_path: "{{ efidir.files[0].path }}"
-      when: efidir.files
+        grub_cfg_path: "{{ efi_dir.files[0].path }}"
+      when: efi_dir.files
     - name: RHEL -> Check if the LILO path exists
       stat:
         path: "/boot/grub2/grub.cfg"
-      register: grubdir
+      register: grub_dir
     - name: RHEL -> Set variable for grub.cfg in LILO location
       set_fact:
-        grub_cfg_path: "{{ grubdir.stat.path }}"
-      when: grubdir.stat.path is defined
+        grub_cfg_path: "{{ grub_dir.stat.path }}"
+      when: grub_dir.stat.path is defined
     - name: RHEL -> Set chmod 600 on grub.cfg
       file:
         path: "{{ item }}"
@@ -322,7 +317,7 @@
         group: root
         mode: 0644
         line: "ALL: 127.0.0.1"
-    - name: RHEL -> Set permissions on tcpwrappers files (EL7)
+    - name: RHEL -> Set permissions on tcp wrappers files (EL7)
       file:
         path: "{{ item }}"
         owner: root
@@ -422,15 +417,15 @@
           shell: |
             SYS_UID_MIN="$(awk '/^UID_MIN/ {print $2}' /etc/login.defs)"
             awk -v a="${SYS_UID_MIN}" -F:   '$3<a {print $1}' /etc/passwd | grep -v "root" | xargs
-          register: sysusers
+          register: sys_users
           changed_when: false
         - name: RHEL -> Report for which users password will be locked
-          debug: msg="{{ sysusers.stdout }}"
-          when: sysusers.stdout | length > 0
+          debug: msg="{{ sys_users.stdout }}"
+          when: sys_users.stdout | length > 0
           changed_when: true
         - name: RHEL -> Lock to all fetched system users
           shell: |
-            for i in {{ sysusers.stdout }} ; do
+            for i in {{ sys_users.stdout }} ; do
               echo "passwd -l ${i}" >> /tmp/provera1
               passwd -l ${i}
             done
@@ -444,15 +439,15 @@
         - name: RHEL -> Report to user account for which we will set shell to /bin/false
           debug: msg="Shell will be removed for --> {{ sys_wo_nologin.stdout }}"
           when: sys_wo_nologin.stdout | length > 0
-        - name: RHEL -> Set /bin/false as a default shell for catched system users
+        - name: RHEL -> Set /bin/false as a default shell for fetched system users
           shell: |
             for i in {{ sys_wo_nologin.stdout }} ; do
               echo "chsh -s /bin/false ${i}" >> /tmp/provera2
               chsh -s /bin/false ${i}
             done
           when: sys_wo_nologin.stdout | length > 0
-        - name: RHEL -> Report to user account there is no sysaccount without /bin/false
-          debug: msg="Noone of system users have access to shell"
+        - name: RHEL -> Report to user account there is no sys-account without /bin/false
+          debug: msg="None of system users have access to shell"
           when: sys_wo_nologin.stdout | length == 0
         - name: RHEL -> Setup login.defs file
           copy:
@@ -617,9 +612,10 @@
         name: sshd
         state: restarted
       when: sshd_change.changed
-    - name: RHEL -> Setup ssh port fact to {{ ssh_port }}
+      failed_when: false
+    - name: RHEL -> Setup ansible_port to {{ ssh_port }}
       set_fact:
-        ansible_port: "{{ ssh_port }}"
+        ansible_ssh_port: "{{ ssh_port }}"
       when: ssh_port != 22
   tags: SSHD
 
@@ -735,14 +731,14 @@
 
              [Install]
              WantedBy=multi-user.target
-         register: usbauth
+         register: usb_auth
        - name: RHEL -> Reload systemd daemon, enable and restart USB-authorization.service
          systemd:
            name: USB-authorization.service
            state: restarted
            enabled: yes
            daemon_reload: yes
-         when: usbauth.changed
+         when: usb_auth.changed
   tags: LYNIS_RECOMMENDATIONS
 
 # Require firewalld
@@ -842,7 +838,7 @@
   when: install_aide
   tags: AIDE
 
-# Basicaly, this is not needed, but is OK to check audit score, from time to time
+# Basically, this is not needed, but is OK to check audit score, from time to time
 # You can remove this from server with: rm -rf /root/lynis
 - name: RHEL -> Copy Lynis setup to server
   block:
@@ -857,7 +853,7 @@
           shell: |
             cd /usr/local/lynis
             ./lynis audit system
-        - name: RHEL -> Check Lynus audit score
+        - name: RHEL -> Check Lynis audit score
           shell: grep 'Hardening index' /var/log/lynis.log | cut -d " " -f 3- | grep -o '[[:digit:]]*'
           register: audit_score
         - name: RHEL -> Show audit score and info (less than 85/100 is compliance fail)
@@ -867,9 +863,7 @@
       tags: LYNIS_SCAN
   tags: LYNIS
 
-- name: RHEL -> Check will server survive the reboot, just for anycase
+- name: RHEL -> Check will server survive the reboot, just for any case
   reboot:
-    reboot_timeout: 900
-    connect_timeout: 20
   when: reboot_is_approved
   tags: REBOOT
