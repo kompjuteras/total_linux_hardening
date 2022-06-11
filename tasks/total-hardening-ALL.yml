@@ -1098,8 +1098,40 @@
 - name: ALL -> Ensure root PATH integrity
   block:
     - name: ALL -> Run script on path variable
-      script: files/path_check.sh
+      shell: |
+        if [ "$(echo $PATH | grep ::)" != "" ]; then
+            echo "Empty Directory in PATH (::)"
+        fi
+        if [ "$(echo $PATH | grep :$)" != "" ]; then
+            echo "Trailing : in PATH"
+        fi
+        p=$(echo $PATH | sed -e 's/::/:/' -e 's/:$//' -e 's/:/ /g')
+        set -- $p
+        while [ "$1" != "" ]; do
+            if [ "$1" = "." ]; then
+                echo "PATH contains ."
+                shift
+                continue
+            fi
+            if [ -d $1 ]; then
+                dirperm=$(ls -ldH $1 | cut -f1 -d" ")
+                if [ "$(echo $dirperm | cut -c6)" != "-" ]; then
+                    echo "Group Write permission set on directory $1"
+                fi
+                if [ "$(echo $dirperm | cut -c9)" != "-" ]; then
+                echo "Other Write permission set on directory $1"
+                fi
+                dirown=$(ls -ldH $1 | awk '{print $3}')
+                if [ "$dirown" != "root" ] ; then
+                    echo $1 is not owned by root
+                fi
+            else
+                echo $1 is not a directory
+            fi
+            shift
+        done
       changed_when: false
+      failed_when: false
       register: path_check
     - name: ALL -> Print report to user (fix manually if any)
       debug:
@@ -1112,10 +1144,16 @@
 - name: ALL -> Report on groups in /etc/passwd with a GID not in /etc/group
   block:
     - name: ALL -> Use script to pull the list of groups
-      script:
-        cmd: files/undefined_groups.sh
+      shell: |
+        for i in $(cut -s -d: -f4 /etc/passwd | sort -u ); do
+          grep -q -P "^.*?:[^:]*:$i:" /etc/group
+        if [ $? -ne 0 ]; then
+          echo "Group $i is referenced by /etc/passwd but does not exist in /etc/group"
+        fi
+        done
       register: undefined_groups
       changed_when: false
+      failed_when: false
     - name: ALL -> Report to user any unreferenced groups (fix manually if any)
       debug:
         msg: "{{ undefined_groups.stdout_lines }}"
@@ -1125,10 +1163,18 @@
 - name: ALL -> Report on duplicate UIDs in /etc/passwd
   block:
     - name: ALL -> Use script to pull the list of duplicate UIDs
-      script:
-        cmd: files/duplicate_uids.sh
+      shell: |
+        cat /etc/passwd | cut -f3 -d":" | sort -n | uniq -c | while read x ; do
+          [ -z "${x}" ] && break
+          set - $x
+          if [ $1 -gt 1 ]; then
+            users=$(awk -F: '($3 == n) { print $1 }' n=$2 /etc/passwd | xargs)
+            echo "Duplicate UID ($2): ${users}"
+          fi
+        done
       register: duplicate_uids
       changed_when: false
+      failed_when: false
     - name: ALL -> Print report of duplicated UIDs to user (fix manually if any)
       debug:
         msg: "{{ duplicate_uids.stdout_lines }}"
@@ -1138,9 +1184,17 @@
 - name: ALL -> Report on duplicate GIDs in /etc/group
   block:
     - name: ALL -> Use script to pull the list of duplicate GIDs
-      script:
-        cmd: files/duplicate_guids.sh
+      shell: |
+        cat /etc/group | cut -f3 -d":" | sort -n | uniq -c | while read x ; do
+          [ -z "${x}" ] && break
+          set - $x
+          if [ $1 -gt 1 ]; then
+            groups=$(awk -F: '($3 == n) { print $1 }' n=$2 /etc/group | xargs)
+            echo "Duplicate GID ($2): ${groups}"
+          fi
+        done
       register: duplicate_guids
+      failed_when: false
       changed_when: false
     - name: ALL -> Print report of duplicate GIDs to user (fix manually if any)
       debug:
@@ -1151,10 +1205,18 @@
 - name: ALL -> Report on duplicate users in /etc/passwd
   block:
     - name: ALL -> Use script to pull the list of users
-      script:
-        cmd: files/duplicate_users.sh
+      shell: |
+        cat /etc/passwd | cut -f1 -d":" | sort -n | uniq -c | while read x ; do
+          [ -z "${x}" ] && break
+          set - $x
+          if [ $1 -gt 1 ]; then
+            uids=$(awk -F: '($1 == n) { print $3 }' n=$2 /etc/passwd | xargs)
+            echo "Duplicate User Name ($2): ${uids}"
+          fi
+        done
       register: duplicate_users
       changed_when: false
+      failed_when: false
     - name: ALL -> Print report of duplicate users to user (fix manually if any)
       debug:
         msg: "{{ duplicate_users.stdout_lines }}"
@@ -1164,9 +1226,17 @@
 - name: ALL -> Report on duplicate groups in /etc/group
   block:
     - name: ALL -> Use script to pull the list of groups
-      script:
-        cmd: files/duplicate_groups.sh
+      shell: |
+        cat /etc/group | cut -f1 -d":" | sort -n | uniq -c | while read x ; do
+          [ -z "${x}" ] && break
+          set - $x
+          if [ $1 -gt 1 ]; then
+            gids=$(awk -F: '($1 == n) { print $3 }' n=$2 /etc/passwd | xargs)
+            echo "Duplicate Group Name ($2): ${gids}"
+          fi
+        done
       register: duplicate_groups
+      failed_when: false
       changed_when: false
     - name: ALL -> Print report of duplicate groups to user (fix manually if any)
       debug:
